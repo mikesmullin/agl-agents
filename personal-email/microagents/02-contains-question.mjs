@@ -1,0 +1,28 @@
+import Agent from '../../node_modules/agl-ai/src/agent.mjs';
+import { _G } from '../../lib/globals.mjs';
+
+_G.containsQuestionMicroagent = async (instruction) => {
+  return _G.traceStep('❓', 'Checking if instruction is a question', async () => {
+    const microagent = await Agent.factory({
+      system_prompt: `Determine whether the user-instruction contains a question.`,
+      output_tool: {
+        type: 'boolean',
+        description: 'Is asking a question?',
+      },
+    });
+
+    const prompt = `
+<user-instruction>
+${_G.xmlEscape(instruction)}
+</user-instruction>
+`
+
+    const result = await microagent.run({ prompt });
+    _G.log('microagent.result', {
+      name: 'containsQuestionMicroagent',
+      input: { instruction },
+      output: result,
+    }, 'microagent');
+    return result;
+  });
+}

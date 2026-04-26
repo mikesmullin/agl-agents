@@ -1,0 +1,15 @@
+{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "agents",
+      "dependencies": {
+        "agl-ai": "^0.1.4",
+      },
+    },
+  },
+  "packages": {
+    "agl-ai": ["agl-ai@0.1.4", "", {}, "sha512-08/33NkAG1A/yMxtKJjeDCi9hVxXHW7nCq1FE6aVmSirOgi+W0uwyKHmYWsxX6/DJ+C6wk3aAS28662xO2ndQw=="],
+  }
+}

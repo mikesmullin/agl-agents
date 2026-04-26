@@ -1,0 +1,7 @@
+# Optional folder purpose annotations for gmail labels discovered from google-email.
+# Live Gmail labels remain the source of truth; this file adds human-meaningful descriptions.
+#
+# Example:
+# google_email:
+#   labels:
+#     "Example Label": short description of what belongs in this folder

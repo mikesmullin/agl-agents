@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "agl-ai": "^0.1.4"
+  },
+  "name": "agents",
+  "type": "module",
+  "private": true
+}
