@@ -33,7 +33,8 @@ ${_G.xmlEscape(journalMatches || 'No relevant journal entry found.')}
 </journal-context>
 
 <available-operations>
-mark as read/unread, delete, move to {{destination}}.
+mark as read/unread, delete (queued), move to {{destination}}.
+Note: operations are queued offline and applied to ${_G.EMAIL_PROVIDER_NAME} in batch at session end.
 </available-operations>
 
 <valid-move-destinations>

@@ -14,44 +14,35 @@ export const executeInstructionMicroagent = _G.executeInstructionMicroagent = as
     },
   });
 
-  microagent.Tool('mark_as_read', 'Mark the email as read', {}, [], async () => {
-    const r = await _G.spawn('google-email', ['inbox', 'read', emailId]);
-    return r.code === 0 ? 'Marked as read.' : `Failed: ${r.stderr} r${r.stdout}`;
+  microagent.Tool('mark_as_read', 'Mark the email as read (offline metadata).', {}, [], async () => {
+    const r = await _G.emailRead(emailId);
+    return r.code === 0 ? 'Marked as read.' : `Failed: ${r.stderr} ${r.stdout}`;
   });
 
-  microagent.Tool('mark_as_unread', 'Mark the email as unread in offline metadata.', {}, [], async () => {
-    const r = await _G.spawn('google-email', ['inbox', 'unread', emailId]);
+  microagent.Tool('mark_as_unread', 'Mark the email as unread (offline metadata).', {}, [], async () => {
+    const r = await _G.emailUnread(emailId);
     return r.code === 0 ? 'Marked as unread.' : `Failed: ${r.stderr} ${r.stdout}`;
   });
 
-  microagent.Tool('delete', 'Delete the email.', {}, [], async () => {
-    const del = await _G.spawn('google-email', ['delete', emailId]);
+  microagent.Tool('delete', 'Queue the email for deletion (moved to Deleted Items when applied).', {}, [], async () => {
+    const del = await _G.emailDelete(emailId);
     if (del.code !== 0) {
-      return `Failed to delete email: ${del.stderr} ${del.stdout}`;
+      return `Failed to queue deletion: ${del.stderr} ${del.stdout}`;
     }
-    return 'Deleted.';
+    return 'Queued for deletion.';
   });
 
-  microagent.Tool('move', 'Apply a label to the email (same as moving it into a folder). This can also archive email.', {
+  microagent.Tool('move', 'Queue the email to be moved to a folder (including Archive).', {
     folder: { type: 'string', description: 'Destination folder name. Must match existing (case-sensitive).' },
   }, ['folder'], async (ctx, { folder }) => {
     const requestedFolder = _G.mustBeTrimmedStringOr(folder, 'Unknown');
 
-    let move;
-    if (_G.stristr(requestedFolder, 'archive')) {
-      move = await _G.spawn('google-email', ['archive', emailId]);
-    } else {
-      if (!_G.findMoveFolderLib(_G.cachedMoveFolders, requestedFolder)) {
-        return _G.invalidFolderMessageLib(requestedFolder, _G.cachedMoveFolders);
-      }
-
-      move = await _G.spawn('google-email', ['move', emailId, requestedFolder]);
-    }
+    const move = await _G.emailMove(emailId, requestedFolder);
     if (move.code !== 0) {
-      return `Failed to move email: ${move.stderr} ${move.stdout}.`;
+      return [move.stderr, move.stdout].filter(Boolean).join(' ') || 'Failed to queue move.';
     }
 
-    return `Moved email to "${JSON.stringify(requestedFolder)}".`;
+    return `Queued move to "${requestedFolder}".`;
   });
 
   const prompt = `

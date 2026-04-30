@@ -15,13 +15,14 @@ import './microagents/07-execute-memo-instruction.mjs';
 import './microagents/08-execute-instruction.mjs';
 import './microagents/09-build-journal-entry.mjs';
 import './microagents/10-build-presentation-entry.mjs';
-import '../lib/google-email.mjs';
+import '../lib/email-adapter.mjs';
 import '../lib/html-email.mjs';
 import '../lib/memo.mjs';
 import { mkdir } from 'fs/promises';
 import { createInterface } from 'readline/promises';
 
 Agent.default.model = _G.MODEL;
+Agent.default.context_window = _G.CONTEXT_WINDOW;
 
 await mkdir(_G.DB_DIR, { recursive: true });
 

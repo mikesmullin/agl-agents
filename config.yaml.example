@@ -1,3 +1,10 @@
+# Email provider selection.
+# Controls which email CLI backend personal-email uses.
+# Supported values: 'google' (default), 'outlook'
+#
+# email:
+#   provider: google
+
 # Optional folder purpose annotations for gmail labels discovered from google-email.
 # Live Gmail labels remain the source of truth; this file adds human-meaningful descriptions.
 #
