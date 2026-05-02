@@ -1,0 +1,27 @@
+# personal-email agent config
+
+perception:
+  # Used when agent.mjs is started with --perception flag.
+  # Requires perception-voice server to be running:
+  #   cd /path/to/perception-voice && perception-voice serve
+
+  # Path to the perception-voice Unix socket (relative to workspace root, or absolute)
+  socket_path: "tmp/whisper/tmp/perception-voice/perception.sock"
+
+  # How long a silence gap (seconds) between utterances triggers a flush of the buffer
+  # and an exact-match lookup against word_mappings.
+  # Should match whisper's keyboard.word_mapping_pause_threshold_s
+  pause_threshold_s: 0.8
+
+  # Map spoken phrases to the text returned to the agent prompt.
+  # Matching: case-insensitive, alpha chars only (punctuation ignored).
+  # Value is returned verbatim; use \n for Enter.
+  word_mappings:
+    proceed: "proceed\n"
+    skip: "skip\n"
+    quit: "quit\n"
+    submit: "submit\n"
+    erase: "erase\n"
+    yes: "yes\n"
+    no: "no\n"
+    merge: "merge\n"

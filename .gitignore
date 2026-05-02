@@ -39,6 +39,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 /tmp/
 
 # user db
-/personal-email/db/*
+/personal-email/db
 .vscode/
 config.yaml

@@ -22,6 +22,7 @@ import '../lib/email-adapter.mjs';
 import '../lib/html-email.mjs';
 import '../lib/memo.mjs';
 import '../lib/recall.mjs';
+import { loadPerceptionConfig } from '../lib/perception.mjs';
 import { YAML } from 'bun';
 import { readFile } from 'fs/promises';
 import { mkdir } from 'fs/promises';
@@ -49,8 +50,74 @@ await mkdir(_G.DB_DIR, { recursive: true });
 // Ensure the journal db directory is git-tracked
 await _G.ensureJournalGitRepoLib(_G.spawn, _G.DB_DIR);
 
+// --perception flag: replace readline with voice-driven input
+const usePerception = process.argv.includes('--perception');
+let perception = null;
+if (usePerception) {
+	try {
+		perception = await loadPerceptionConfig(process.cwd());
+		console.log('🎤 Perception mode active — listening for voice commands.');
+	} catch (e) {
+		console.error(`⚠️  Failed to load personal-email/config.yaml perception config: ${e?.message || e}. Falling back to keyboard input.`);
+	}
+}
+
 const rl = createInterface({ input: process.stdin, output: process.stdout });
-const since = String(process.argv[2] || '').trim() || undefined;
+
+let shuttingDown = false;
+
+async function beginGracefulShutdown() {
+	if (shuttingDown) {
+		process.exit(130);
+	}
+	shuttingDown = true;
+	console.log('\nInterrupt received. Stopping active prompt and syncing pending mutations...');
+	try {
+		rl.close();
+		perception?.cancelActiveQuestion?.();
+		_G.stopSpeaking();
+		await _G.endEmailTransaction();
+	}
+	finally {
+		process.exit(130);
+	}
+}
+
+process.on('SIGINT', beginGracefulShutdown);
+
+/**
+ * Unified prompt: uses perception-voice when active, otherwise readline.
+ * In perception mode, unmapped utterances are shown as hints and the prompt
+ * re-displays until a mapped word is spoken.
+ */
+async function ask(promptText) {
+	if (shuttingDown) {
+		return '';
+	}
+	if (perception) {
+		try {
+			return await perception.question(promptText, rl);
+		}
+		catch (error) {
+			if ((error?.code === 'ABORT_ERR' || error?.code === 'ERR_USE_AFTER_CLOSE') && shuttingDown) {
+				return '';
+			}
+			throw error;
+		}
+	}
+	try {
+		return await rl.question(promptText);
+	}
+	catch (error) {
+		if (error?.code === 'ERR_USE_AFTER_CLOSE' && shuttingDown) {
+			return '';
+		}
+		throw error;
+	}
+}
+
+const cliArgs = process.argv.slice(2).filter((a) => a !== '--perception');
+const since = String(cliArgs[0] || '').trim() || undefined;
 
 let pageIds = [];
 let pageIndex = 0;
@@ -159,18 +226,25 @@ ${String(recommendation || '')} ${confidenceLabel}
 	let instruction = '';
 	let instructionOrRecommendation = '';
 	while (true) {
-		instruction = await rl.question(
+		instruction = await ask(
 			`${_G.ANSI.cyan}${_G.ANSI.bold}🤖 What would you like to do?${_G.ANSI.reset}\n${_G.ANSI.dim}(proceed, skip, quit)> ${_G.ANSI.reset}`,
 		);
 		_G.stopSpeaking();
+		if (shuttingDown) {
+			shouldStop = true;
+			break;
+		}
 		if (!instruction.trim()) {
 			continue;
 		}
-		if (instruction.trim().toLowerCase() === 'p') {
+		let normalizedInstruction = instruction.trim().toLowerCase();
+		if (normalizedInstruction === 'p') {
 			instruction = 'proceed';
+			normalizedInstruction = 'proceed';
 		}
+		const commandWords = new Set(normalizedInstruction.match(/[a-z]+/g) || []);
 
-		if (instruction.toLowerCase().includes('quit')) {
+		if (normalizedInstruction === 'quit' || commandWords.has('quit')) {
 			console.log('Graceful exit requested. Running queued mutation sync...');
 			await _G.endEmailTransaction();
 			console.log('Stopping email handler loop.');
@@ -178,14 +252,14 @@ ${String(recommendation || '')} ${confidenceLabel}
 			break;
 		}
 
-		if (instruction.trim().toLowerCase() === 'skip') {
+		if (normalizedInstruction === 'skip') {
 			console.log('Skipping email.');
 			pageIndex += 1;
 			continue emailLoop;
 		}
 
 		instructionOrRecommendation = instruction;
-		if (instruction.toLowerCase().includes('proceed')) {
+		if (normalizedInstruction === 'proceed') {
 			console.log('Proceed mode: applying recommended action.');
 			instructionOrRecommendation = recommendation;
 
@@ -219,7 +293,7 @@ ${String(recommendation || '')} ${confidenceLabel}
 			const allMergeEntries = await _G.readAllJournalEntriesLib(_G.MEMO_DB);
 
 			mergeSelectionLoop: while (true) {
-				const criteria = await rl.question(
+				const criteria = await ask(
 					`${_G.ANSI.dim}Select criteria (or "merge" to proceed)> ${_G.ANSI.reset}`,
 				);
 				const cTrimmed = criteria.trim();
@@ -246,7 +320,7 @@ ${String(recommendation || '')} ${confidenceLabel}
 					console.log(entryText);
 					console.log(`${_G.ANSI.dim}${'─'.repeat(60)}${_G.ANSI.reset}\n`);
 
-					const verdict = await rl.question(
+					const verdict = await ask(
 						`${_G.ANSI.dim}Include this entry in merge? [Y/n/q]> ${_G.ANSI.reset}`,
 					);
 					const v = verdict.trim().toLowerCase();
@@ -286,7 +360,7 @@ ${String(recommendation || '')} ${confidenceLabel}
   Rationale:           ${consolidation.consolidated_rationale}
   Supersedes entries:  [${supersedes.map((id) => `id=${id}`).join(', ')}]
 `);
-					const approval = await rl.question(
+					const approval = await ask(
 						`${_G.ANSI.dim}Apply this consolidation? (yes / no / edit)> ${_G.ANSI.reset}`,
 					);
 					const ans = approval.trim().toLowerCase();
@@ -329,7 +403,7 @@ ${String(recommendation || '')} ${confidenceLabel}
 					else if (ans === 'edit' || ans.startsWith('edit ')) {
 						extraInstructions = ans.startsWith('edit ')
 							? ans.slice(5).trim()
-							: await rl.question(`${_G.ANSI.dim}Additional instructions> ${_G.ANSI.reset}`);
+							: await ask(`${_G.ANSI.dim}Additional instructions> ${_G.ANSI.reset}`);
 					}
 					else {
 						console.log('Unrecognized. Merge skipped.\n');
