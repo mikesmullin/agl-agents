@@ -6,18 +6,16 @@ _G.recommendActionMicroagent = async (emailText, journalMatches) => {
     const microagent = await Agent.factory({
       system_prompt: `
 You recommend which available-operations to apply to incoming-email-content, based on past actions logged to journal-context.
-You should reason whether journal-context is relevant to the incoming-email-content; although the journal-context is the closest semantic match for incoming-email-content, occasionally it may seem irrelevant; if so, and if the sender/vendor name is not a matchin, then you may ignore the journal entry.`,
+You should reason whether journal-context is relevant to the incoming-email-content; although the journal-context is the closest semantic match for incoming-email-content, occasionally it may seem irrelevant; if so, and if the sender/vendor name is not matching, then you may ignore the journal entry.`,
       output_tool: {
         description: 'Give your recommendation',
         parameters: {
           journal_id: { type: 'integer', description: `The ID found in the journal-context that you used. This must be a valid citation; do not make up a value. If journal-context was empty or irrelevant to the email, return 0.` },
           operations: {
             type: 'string', description: `Which operation(s) do you recommend for the user to take?
-Prioritize delete over archive, if you are considering both.
-If uncertain, safest option combo is: mark as read + move to archive.
-A move operation must match existing destination (case-sensitive).
-**NOTICE:** You may choose more than one operation. Often a folder move is preceded by mark-as-read, but it does not have to be.` },
-          rationale: { type: 'string', description: 'Concisely list the factors in your decision (≤25 words)' },
+**IMPORTANT:** If journal-context recommends to delete the email, you MUST recommend delete (without archive).
+A move operation must match existing destination (case-sensitive).` },
+          rationale: { type: 'string', description: 'Concisely list the factors in your decision (especially if you deviate from journal, explain why) (≤25 words)' },
           confidence: { type: 'integer', description: 'Self-assessed confidence score 0–100 that this recommendation matches what the operator would choose. High confidence (≥80) means the journal entry is a strong, clear match. Low confidence (<60) means the email is ambiguous or no journal entry applies.' },
         },
         required: ['journal_id', 'operations', 'rationale', 'confidence'],
@@ -34,7 +32,6 @@ ${_G.xmlEscape(journalMatches || 'No relevant journal entry found.')}
 </journal-context>
 
 <available-operations>
-- mark as read
 - delete
 - move to {{destination}}
 </available-operations>

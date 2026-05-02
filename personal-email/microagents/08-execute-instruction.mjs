@@ -29,6 +29,7 @@ export const executeInstructionMicroagent = _G.executeInstructionMicroagent = as
     if (del.code !== 0) {
       return `Failed to queue deletion: ${del.stderr} ${del.stdout}`;
     }
+    await _G.emailRead(emailId); // mark-as-read is implicit
     return 'Queued for deletion.';
   });
 
@@ -41,7 +42,7 @@ export const executeInstructionMicroagent = _G.executeInstructionMicroagent = as
     if (move.code !== 0) {
       return [move.stderr, move.stdout].filter(Boolean).join(' ') || 'Failed to queue move.';
     }
-
+    await _G.emailRead(emailId); // mark-as-read is implicit
     return `Queued move to "${requestedFolder}".`;
   });
 

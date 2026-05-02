@@ -116,6 +116,32 @@ async function ask(promptText) {
 	}
 }
 
+// Cache-busting reload of all microagent modules so edits to their
+// prompts/logic take effect without restarting the agent process.
+const MICROAGENT_FILES = [
+	'00-fingerprint-email.mjs',
+	'01-recommend-action.mjs',
+	'02-contains-question.mjs',
+	'04-answer-question-from-email.mjs',
+	'05-summarize-email.mjs',
+	'06-presentation-rule-relevance.mjs',
+	'07-execute-memo-instruction.mjs',
+	'08-execute-instruction.mjs',
+	'09-build-journal-entry.mjs',
+	'10-build-presentation-entry.mjs',
+	'14-journal-entry-relevance-filter.mjs',
+	'15-consolidate-journal-group.mjs',
+];
+async function reloadMicroagents() {
+	const t = Date.now();
+	for (const f of MICROAGENT_FILES) {
+		// Bare absolute path + ?t= is the correct cache-bust in Bun.
+		// file:// URLs have their query string stripped during resolution,
+		// so they do NOT produce a new cache entry.
+		await import(`${import.meta.dir}/microagents/${f}?t=${t}`);
+	}
+}
+
 const cliArgs = process.argv.slice(2).filter((a) => a !== '--perception');
 const since = String(cliArgs[0] || '').trim() || undefined;
 
@@ -227,7 +253,7 @@ ${String(recommendation || '')} ${confidenceLabel}
 	let instructionOrRecommendation = '';
 	while (true) {
 		instruction = await ask(
-			`${_G.ANSI.cyan}${_G.ANSI.bold}🤖 What would you like to do?${_G.ANSI.reset}\n${_G.ANSI.dim}(proceed, skip, quit)> ${_G.ANSI.reset}`,
+			`${_G.ANSI.cyan}${_G.ANSI.bold}🤖 What would you like to do?${_G.ANSI.reset}\n${_G.ANSI.dim}(proceed, skip, refresh, reload, quit)> ${_G.ANSI.reset}`,
 		);
 		_G.stopSpeaking();
 		if (shuttingDown) {
@@ -255,6 +281,19 @@ ${String(recommendation || '')} ${confidenceLabel}
 		if (normalizedInstruction === 'skip') {
 			console.log('Skipping email.');
 			pageIndex += 1;
+			continue emailLoop;
+		}
+
+		if (normalizedInstruction === 'refresh') {
+			console.log('Refreshing email evaluation from disk...');
+			continue emailLoop;
+		}
+
+		if (normalizedInstruction === 'reload') {
+			const reloadTrace = _G.traceStart('🔄', 'Reloading microagent modules from disk');
+			await reloadMicroagents();
+			reloadTrace.traceEnd();
+			console.log('Microagents reloaded. Re-evaluating email...');
 			continue emailLoop;
 		}
 

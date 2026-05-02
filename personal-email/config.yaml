@@ -25,3 +25,5 @@ perception:
     yes: "yes\n"
     no: "no\n"
     merge: "merge\n"
+    refresh: "refresh\n"
+    reload: "reload\n"
