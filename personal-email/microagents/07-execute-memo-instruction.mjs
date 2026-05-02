@@ -82,10 +82,11 @@ _G.executeMemoInstructionMicroagent = async (instruction) => {
       if (!target.ok) return target.message;
 
       const r = await _G.reindexMemoDbLib(_G.spawn, target.path);
-      if (r.code === 0) {
-        return `Reindexed ${target.db} memo database.`;
+      if (r.code !== 0) {
+        return `Failed to reindex ${target.db}: ${r.stderr} ${r.stdout}`;
       }
-      return `Failed to reindex ${target.db}: ${r.stderr} ${r.stdout}`;
+      await _G.gitJournalCommitLib(_G.spawn, _G.DB_DIR, `journal: reindex ${target.db}`);
+      return `Reindexed ${target.db} memo database.`;
     });
 
     const prompt = `

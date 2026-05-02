@@ -12,3 +12,11 @@
 # google_email:
 #   labels:
 #     "Example Label": short description of what belongs in this folder
+
+# Journal memory tuning.
+# Controls recommendation confidence gating and re-index behavior.
+#
+# journal:
+#   confidence_threshold: 60    # below this %, 'proceed' is blocked and operator must give explicit instruction
+#   reindex_relevance_min: 50   # minimum confidence for Stage 1 relevance filter to include an entry
+#   git_auto_commit: true       # auto-commit journal writes to git (requires git in PATH)
