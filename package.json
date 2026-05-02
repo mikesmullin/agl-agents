@@ -1,6 +1,7 @@
 {
   "dependencies": {
-    "agl-ai": "^0.1.4"
+    "agl-ai": "^0.1.4",
+    "bun-coffeescript": "^1.0.3"
   },
   "name": "agents",
   "type": "module",
