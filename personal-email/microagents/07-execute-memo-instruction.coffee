@@ -1,6 +1,6 @@
 import Agent from '../../node_modules/agl-ai/src/agent.mjs'
 import { YAML } from 'bun'
-import { _G } from '../../lib/globals.mjs'
+import { _G } from '../../lib/globals.coffee'
 import { mkdir, writeFile, rm } from 'fs/promises'
 import { resolve } from 'path'
 

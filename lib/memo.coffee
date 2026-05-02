@@ -1,10 +1,10 @@
 import { YAML } from 'bun'
 import { mkdir, writeFile, rm } from 'fs/promises'
 import { resolve } from 'path'
-import { _G } from './globals.mjs'
+import { _G } from './globals.coffee'
 
 export recallJournal = _G.recallJournal = (spawn, memoDbPath, emailText) ->
-  isPresentationMemo = memoDbPath === _G.PRESENTATION_MEMO_DB
+  isPresentationMemo = memoDbPath is _G.PRESENTATION_MEMO_DB
   topK = 10
   _G.traceStep(
     if isPresentationMemo then '🎛️' else '🔎',
@@ -21,7 +21,7 @@ export recallJournal = _G.recallJournal = (spawn, memoDbPath, emailText) ->
       , 'memo'
 
       result = await spawn('memo', ['recall', '-f', memoDbPath, '-k', String(topK), '--yaml', query])
-      output = if result.code === 0 then result.stdout.trim() else ''
+      output = if result.code is 0 then result.stdout.trim() else ''
 
       _G.log 'memo.recall.result',
         dbPath: memoDbPath
@@ -33,7 +33,7 @@ export recallJournal = _G.recallJournal = (spawn, memoDbPath, emailText) ->
         outputLength: output.length
       , 'memo'
 
-      if result.code !== 0
+      if result.code isnt 0
         return ''
 
       output
@@ -67,7 +67,7 @@ export overwriteMemoById = _G.overwriteMemoByIdLib = (spawn, dbDir, dbPath, memo
   save = await spawn('memo', ['save', '-f', dbPath, tmpFile])
   await rm(tmpFile, { force: true })
 
-  if save.code !== 0
+  if save.code isnt 0
     return { ok: false, message: save.stderr or save.stdout or 'Failed to save memo update.' }
   { ok: true, message: save.stdout or "Updated memo #{id}." }
 
@@ -75,23 +75,22 @@ export deleteMemoById = _G.deleteMemoByIdLib = (spawn, dbDir, dbPath, memoId, _r
   id = Number(memoId)
   if not Number.isInteger(id) or id < 0
     return { ok: false, message: "Invalid memo id: #{memoId}" }
-  void dbDir
   del = await spawn('memo', ['delete', '-f', dbPath, String(id)])
-  if del.code !== 0
+  if del.code isnt 0
     return { ok: false, message: del.stderr or del.stdout or "Failed to delete memo #{id}." }
   { ok: true, message: del.stdout or "Deleted memo #{id}." }
 
 export reindexMemoDb = _G.reindexMemoDbLib = (spawn, dbPath) ->
   reindex = await spawn('memo', ['reindex', '-f', dbPath])
-  if reindex.code !== 0
+  if reindex.code isnt 0
     reindex = await spawn('memo', ['-f', dbPath, 'reindex'])
   reindex
 
 export resolveMemoDbTarget = _G.resolveMemoDbTargetLib = (dbName, memoDb, presentationMemoDb) ->
   db = String(dbName or '').trim().toLowerCase()
-  if db === 'journal'
+  if db is 'journal'
     return { ok: true, db, path: memoDb }
-  if db === 'presentation'
+  if db is 'presentation'
     return { ok: true, db, path: presentationMemoDb }
   {
     ok: false
@@ -125,21 +124,20 @@ export saveJournalEntry = _G.saveJournalEntry = (spawn, dbDir, memoDbPath, journ
       "applies_if: #{String(journalEntry.applies_if or '').replaceAll('\n', ' ')}"
     ].join('\n')
 
-    yamlDoc = YAML.stringify(
+    yamlDoc = YAML.stringify
       metadata:
         ts: now
         confirmed_count: 0
         last_confirmed_ts: null
         sender_email: String(journalEntry.sender_email or '').trim().toLowerCase()
-        keywords
-      body
-    )
+        keywords: keywords
+      body: body
 
     await writeFile(tmpFile, yamlDoc, 'utf8')
     save = await spawn('memo', ['save', '-f', memoDbPath, tmpFile])
     await rm(tmpFile, { force: true })
 
-    if save.code !== 0
+    if save.code isnt 0
       console.error 'Failed to save journal entry to memo.'
       if save.stderr then console.error save.stderr.trim()
 
@@ -155,13 +153,13 @@ export savePresentationEntry = _G.savePresentationEntry = (spawn, dbDir, present
     ).trimEnd()
     yamlDoc = YAML.stringify(
       metadata: { ts: new Date().toISOString() }
-      body
+      body: body
     )
     await writeFile(tmpFile, yamlDoc, 'utf8')
     save = await spawn('memo', ['save', '-f', presentationMemoDbPath, tmpFile])
     await rm(tmpFile, { force: true })
 
-    if save.code !== 0
+    if save.code isnt 0
       console.error 'Failed to save presentation entry to memo.'
       if save.stderr then console.error save.stderr.trim()
 
@@ -183,7 +181,7 @@ export parseMemoRecallResults = _G.parseMemoRecallResults = (text) ->
     results = []
     re = /(?:^|\n)\s*\[(\d+)\]\s+Score:\s*([0-9.]+)\s*\|\s*\n([\s\S]*?)(?=(?:\n\s*\[\d+\]\s+Score:)|$)/g
     m = undefined
-    while (m = re.exec(src)) !== null
+    while m = re.exec(src)
       rank = Number(m[1])
       score = Number(m[2])
       content = String(m[3] or '')
@@ -255,7 +253,6 @@ export extractPresentationCandidateFromRecall = _G.extractPresentationCandidateF
 
 export extractPresentationPreferences = _G.extractPresentationPreferences = (emailText, journalMatches) ->
   _G.traceStep '🎯', 'Extracting presentation preferences', () ->
-    void emailText
     extractPresentationCandidateFromRecall(journalMatches)
 
 # ---------------------------------------------------------------------------
@@ -307,15 +304,15 @@ export reinforceJournalEntry = _G.reinforceJournalEntryLib = (spawn, dbDir, memo
       try
         { YAML: Y } = await import('bun')
         parsed = Y.parse(doc) or {}
-        if Number(parsed.id) === id
+        if Number(parsed.id) is id
           targetBody = String(parsed.body or '')
-          existingMeta = if (parsed.metadata and typeof parsed.metadata === 'object') then { ...parsed.metadata } else {}
+          existingMeta = if (parsed.metadata and typeof parsed.metadata is 'object') then { ...parsed.metadata } else {}
           currentCount = Number(existingMeta.confirmed_count or 0)
           break
       catch
         ### skip ###
 
-    if targetBody === null then return
+    if targetBody is null then return
 
     now = new Date().toISOString()
     tmpFile = resolve(dbDir, "memo-reinforce-#{id}-#{Date.now()}.yaml")
@@ -328,7 +325,7 @@ export reinforceJournalEntry = _G.reinforceJournalEntryLib = (spawn, dbDir, memo
     save = await spawn('memo', ['save', '-f', memoDbPath, tmpFile])
     await rmf(tmpFile, { force: true })
 
-    if save.code !== 0
+    if save.code isnt 0
       console.error 'Failed to reinforce journal entry.'
       if save.stderr then console.error save.stderr.trim()
       return

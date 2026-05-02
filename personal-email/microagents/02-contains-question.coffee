@@ -1,7 +1,7 @@
 import Agent from '../../node_modules/agl-ai/src/agent.mjs'
-import { _G } from '../../lib/globals.mjs'
+import { _G } from '../../lib/globals.coffee'
 
-_G.containsQuestionMicroagent = instruction ->
+_G.containsQuestionMicroagent = (instruction) ->
   _G.traceStep '❓', 'Checking if instruction is a question', ->
     microagent = await Agent.factory
       system_prompt: 'Determine whether the user-instruction contains a question.'

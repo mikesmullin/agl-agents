@@ -1,4 +1,4 @@
-import { _G } from './globals.mjs'
+import { _G } from './globals.coffee'
 
 export ANSI =
   reset: '\x1b[0m'

@@ -1,5 +1,5 @@
 import Agent from '../../node_modules/agl-ai/src/agent.mjs'
-import { _G } from '../../lib/globals.mjs'
+import { _G } from '../../lib/globals.coffee'
 
 _G.consolidateJournalGroupMicroagent = (emailText, instruction, patternSummary, journalEntriesText, extraInstructions = '') ->
   _G.traceStep '📦', 'Consolidating journal group', ->

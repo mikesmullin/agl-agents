@@ -1,192 +1,110 @@
 # personal-email
 
-`personal-email` is an interactive email triage agent for Gmail. It pulls unread messages into a local cache, loads one email at a time, summarizes the message, recalls relevant journal and reading format context, recommends an action, and then lets the operator either accept that recommendation or issue a custom instruction.
+`personal-email` is a headless, unattended email triage agent for Gmail. On each loop iteration it pulls all unread messages within a rolling 14-day window, processes them in parallel through an ECS pipeline, and persists every decision to a per-entity YAML file on disk. The operator reviews and responds by editing those YAML files directly — no interactive prompt.
 
 ## Run From The Command Line
 
 From the repository root:
 
 ```bash
-bun personal-email/agent.mjs
+bun personal-email/agent.coffee
 ```
 
-The agent starts an interactive unread-email triage loop. It will pull unread mail, present one email at a time, speak a short summary, show a recommended action, and then wait for operator input.
+The loop runs indefinitely (10-second sleep between iterations). Press Ctrl+C once to request a graceful finish after the current iteration; press it again to force-quit immediately.
+
+## Architecture
+
+The agent uses an **Entity–Component–System (ECS)** model:
+
+- **World** (`models/world.coffee`) — in-memory registry of all live entities (one per email). Provides `Entity__find(filterFn)` used by every system to query the entities it should act on.
+- **Entity** (`models/entity.coffee`) — static class (never instantiated) that owns all disk I/O. Every read re-loads from disk so operator edits are always picked up on the next iteration. Provides `load`, `save`, `patch`, `delete`, `log`, and `traceStart`.
+- **Components** — named fields on the entity object (e.g. `envelope`, `content`, `fingerprint`, `operator_input`). Component *presence* is the gate: a system processes an entity only when its required components are present (and its own output component is absent).
+- **Systems** — pure async functions in `systems/`. Each queries World, iterates matching entities, and patches components.
 
 ## What It Does
 
-- Pulls unread Gmail messages through the `google-email` CLI.
-- Loads cached unread email IDs in pages and processes them in a loop.
-- Builds a decision input from the email envelope and cleaned body content.
-- Recalls related journal context and presentation preferences from memo databases.
-- Uses microagents to summarize the email, recommend an action, answer follow-up questions, and build persisted journal entries.
-- Executes the chosen Gmail mutation and applies queued changes during graceful shutdown.
+- Calls `google-email pull --since "14 days ago"` on every loop iteration; uses the `transitions[]` array in the YAML output to detect new, deleted, and moved emails and update World and disk accordingly.
+- Loads email envelope and cleaned body content into entity state.
+- Fingerprints each email (keywords, intent) via microagent.
+- Recalls relevant journal history and presentation preferences from memo databases.
+- Summarizes the email and recommends an action (with confidence score).
+- Writes an email card to the entity `log[]` for the operator to review.
+- Gates on `operator_input.instruction` — written by the agent as `null`; the operator fills it in to unlock the next stage.
+- Executes the Gmail mutation and persists a journal entry.
+- Generates a mutation plan, then gates on `apply.approved: true` before applying.
+
+## Processing Loop
+
+Each iteration executes all systems in sequence against all live entities in World. Systems skip entities that don't satisfy their gate predicate. All component paths refer to fields in `personal-email/db/entities/<id>.yaml`.
+
+> ✍️ = must be filled in by the operator by editing the entity YAML file directly on disk
+
+| # | System | Inputs | Outputs |
+|---|--------|--------|---------|
+| 1 | **page** — pull emails; sync World from transitions | — | new entities loaded into World;<br>deleted/archived entities removed from World + disk |
+| 2 | **load** — fetch envelope and body | `id` | `origin.raw`<br>`envelope.from`<br>`envelope.subject`<br>`envelope.date`<br>`envelope.senderEmail`<br>`content.body` |
+| 3 | **fingerprint** — extract keywords and intent | `content.body` | `fingerprint.keywords`<br>`fingerprint.sender_offers`<br>`fingerprint.sender_expects`<br>`fingerprint.reader_value` |
+| 4 | **recall** — retrieve journal and presentation context | `content.body`<br>`fingerprint.keywords`<br>`fingerprint.sender_offers`<br>`fingerprint.sender_expects`<br>`fingerprint.reader_value`<br>`envelope.senderEmail` | `recall.journalContext`<br>`recall.presentationCandidate`<br>`recall.usePresentationPreferences` |
+| 5 | **summarize** — generate headline and summary | `content.body`<br>`recall.usePresentationPreferences`<br>`recall.presentationCandidate.formatting_instructions` | `summary.headline`<br>`summary.text` |
+| 6 | **recommend** — choose action and confidence | `content.body`<br>`recall.journalContext` | `recommendation.label`<br>`recommendation.confidence`<br>`recommendation.journal_id`<br>`recommendation.ref`<br>`recommendation.operations`<br>`recommendation.rationale` |
+| 7 | **display** — write email card to entity log | `envelope.from`<br>`envelope.subject`<br>`envelope.date`<br>`summary.headline`<br>`summary.text`<br>`recommendation.label`<br>`recommendation.confidence`<br>`recall.usePresentationPreferences`<br>`recall.presentationCandidate.formatting_instructions` | `log[]` |
+| 8 | **operator** (stage 1) — open human input gate | `recommendation.label` | `operator_input.instruction: null`<br>`operator_input.recommendation` |
+| 9 | **operator** (stage 2) — process instruction | ✍️ `operator_input.instruction`<br>`content.body`<br>`recommendation.label`<br>`recommendation.journal_id` | `operator.command`<br>`operator.instruction`<br>`operator.instructionOrRecommendation`<br>— or on memo/question:<br>`operator_input.last_result`<br>`operator_input.last_answer`<br>`operator_input.instruction` reset to `null` |
+| 10 | **refresh** — clear components for re-processing | `operator.command` (`refresh` or `reload`) | clears `operator_input`<br>`fingerprint`<br>`recall`<br>`summary`<br>`recommendation`<br>`operator`<br>`execution`<br>`journal` |
+| 11 | **reload** — hot-reload microagents, then refresh | `operator.command` (`reload`) | reloads all microagent modules; same clears as **refresh** |
+| 12 | **execute** — run Gmail instruction | `operator.instruction`<br>`operator.command` | `execution.success`<br>`execution.summary`<br>`execution.instruction`<br>`log[]` |
+| 13 | **journal** — persist outcome to memo database | `content.body`<br>`operator.instructionOrRecommendation`<br>`operator.command`<br>`execution.summary`<br>`recommendation.journal_id` | `journal.summary`<br>`journal.keywords`<br>`journal.action_taken`<br>`journal.factors`<br>`journal.sender_email`<br>`journal.sender_offers`<br>`journal.sender_expects`<br>`journal.reader_value`<br>`journal.match_criteria`<br>`journal.rule` |
+| 14 | **plan** — generate pending mutation plan | `journal` (presence gate) | `plan.success`<br>`plan.text`<br>`plan.planned_at`<br>`log[]` |
+| 15 | **apply** — approve and execute mutations | ✍️ `apply.approved: true`<br>(agent writes `null`; operator sets `true`) | `apply.success`<br>`apply.output`<br>`apply.applied_at`<br>`log[]` |
+| 16 | **clean** — archive completed entities | `apply.success: true`<br>`apply.applied_at` (≥ 1 min ago) | entity YAML moved to `db/_archive/`;<br>entity removed from World |
 
 ## Operation
 
-Ways to answer interactive prompt:
+The agent runs headlessly — no interactive prompt. To respond, edit the entity YAML in `personal-email/db/entities/<id>.yaml` directly. The agent picks up changes on the next loop iteration (every ~10 seconds).
 
-- `proceed` or `p` to apply the recommended action.
-- `quit` to run graceful shutdown, apply queued Gmail mutations, and exit.
-- A custom instruction to override the recommendation.
-- A memo-related command to operate on the journal or presentation memo databases.
-- A natural-language question about the current email.
+**`operator_input.instruction`** — set this field to one of:
+
+- `proceed` or `p` — apply the recommended action.
+- `skip` — skip this email without executing anything.
+- `quit` — stop the agent loop after the current iteration finishes.
+- `refresh` — clear all computed components and re-process from scratch.
+- `reload` — hot-reload microagent modules from disk, then re-process.
+- A memo command (e.g. `journal ...`) — operate on the journal or presentation memo databases; `instruction` is reset to `null` and `last_result` is written back so you can chain commands.
+- A natural-language question — answered from the email content; `instruction` reset to `null`, answer written to `last_answer`.
+- Any other text — treated as a custom Gmail instruction passed directly to the execute stage.
+
+**`apply.approved`** — after the plan stage writes the proposed Gmail mutation plan to `plan.text`, the agent writes `apply.approved: null`. Set it to `true` to authorize the agent to call `google-email apply`.
 
 ## Key Files
 
-- [agent.mjs](./agent.mjs): top-level interactive loop.
-- [microagents/](./microagents/): single-purpose model-driven decision units.
-- [db/](./db/): local memo databases used for journal history and presentation preferences.
+- [agent.coffee](./agent.coffee) — main loop.
+- [models/world.coffee](./models/world.coffee) — in-memory entity registry.
+- [models/entity.coffee](./models/entity.coffee) — disk-backed entity persistence (load, save, patch, delete, log, trace).
+- [systems/](./systems/) — one file per pipeline stage.
+- [microagents/](./microagents/) — single-purpose model-driven decision units.
+- [db/journal.memo](./db/journal.memo) — journal memo database (action history).
+- [db/presentation.memo](./db/presentation.memo) — presentation preferences memo database.
+- [db/entities/](./db/entities/) — one YAML file per live email entity.
 
 ## Microagents
 
-For a more detailed definition of what a microagent is and how to structure one, see [the upstream MICROAGENT guide](https://github.com/mikesmullin/agl/blob/main/docs/MICROAGENT.md).
+For a full definition of the microagent pattern see [docs/ECS.md](./docs/ECS.md).
 
-- [01-recommend-action.mjs](./microagents/01-recommend-action.mjs): recommends what to do with the current email.
-- [02-contains-question.mjs](./microagents/02-contains-question.mjs): decides whether the operator input is a question.
-- [04-answer-question-from-email.mjs](./microagents/04-answer-question-from-email.mjs): answers operator questions from the email content.
-- [05-summarize-email.mjs](./microagents/05-summarize-email.mjs): generates the headline and summary text shown to the operator.
-- [06-presentation-rule-relevance.mjs](./microagents/06-presentation-rule-relevance.mjs): checks whether saved formatting preferences apply to the current email.
-- [07-execute-memo-instruction.mjs](./microagents/07-execute-memo-instruction.mjs): handles memo database instructions.
-- [08-execute-instruction.mjs](./microagents/08-execute-instruction.mjs): executes Gmail actions derived from the final instruction.
-- [09-build-journal-entry.mjs](./microagents/09-build-journal-entry.mjs): turns the outcome into a journal record.
-- [10-build-presentation-entry.mjs](./microagents/10-build-presentation-entry.mjs): extracts reusable presentation preferences.
+- [00-fingerprint-email.coffee](./microagents/00-fingerprint-email.coffee) — extracts keywords and intent from email body.
+- [01-recommend-action.coffee](./microagents/01-recommend-action.coffee) — recommends what to do with the email.
+- [02-contains-question.coffee](./microagents/02-contains-question.coffee) — decides whether an operator instruction is a question.
+- [04-answer-question-from-email.coffee](./microagents/04-answer-question-from-email.coffee) — answers operator questions from email content.
+- [05-summarize-email.coffee](./microagents/05-summarize-email.coffee) — generates headline and summary text.
+- [06-presentation-rule-relevance.coffee](./microagents/06-presentation-rule-relevance.coffee) — checks whether saved formatting preferences apply.
+- [07-execute-memo-instruction.coffee](./microagents/07-execute-memo-instruction.coffee) — handles memo database instructions.
+- [08-execute-instruction.coffee](./microagents/08-execute-instruction.coffee) — executes Gmail actions.
+- [09-build-journal-entry.coffee](./microagents/09-build-journal-entry.coffee) — turns the outcome into a structured journal record.
+- [10-build-presentation-entry.coffee](./microagents/10-build-presentation-entry.coffee) — extracts reusable formatting preferences.
 
 ## Configuration & Data
 
-- Root [config.yaml.example](../config.yaml.example) shows the optional folder-description config shape.
-- Local [db/](./db/) stores journal and presentation memo state.
+- Root [config.yaml.example](../config.yaml.example) — shows all supported config keys including `email.provider` and `journal.confidence_threshold`.
+- [config.yaml](./config.yaml) — local agent config (gitignored).
+- [db/](./db/) — journal and presentation memo state.
+- [db/entities/](./db/entities/) — live entity YAML files (one per email currently in the pipeline).
 - Shared helpers live in [../lib/](../lib/).
-
-## Example
-
-Example session with `lm-studio:google/gemma-4-e4b` (9B param) on RTX 5070Ti (16MB VRAM) Context: 131072
-
-```
-[user@myarch agents]$ bun personal-email/agent.mjs 
-🗃️ Loaded Gmail folder cache. (795 ms)
-📥 Pulled latest emails. (2213 ms)
-📋 Loaded unread inbox page. (444 ms)
-📨 Loaded email d93ff1. (411 ms)
-🧽 Pre-filtered email markup. (2 ms)
-🔎 Searched memo journal context. (121 ms)
-🎛️ Searched presentation memo context. (109 ms)
-🎯 Extracted presentation preferences. (0 ms)
-🧠 Summarized email. (869 ms)
-🗺️ Generated recommendation. (1133 ms)
-
-========== NEXT EMAIL ==========
-From: Safety Posts <reply@ss.email.nextdoor.com>
-Subj: Man arrested after allegedly attempting to get into
-Date: 2026-04-11T16:17:09.000Z
-🗣️ Summary: NSS Alert: Keep Car Doors Locked
-
-Nextdoor post advises keeping car doors locked when parked anywhere, including at home. Post is about an arrest in the area.
-
-Recommended action:
-(Journal 3) mark as read + move to Newsletters. The email is a local neighborhood alert (Nextdoor) about property safety. Treat routine community posts like other Nextdoor digests and archive them after marking as read..
-===============================
-
-🤖 What would you like to do?
-(proceed, quit)> Why are people recommending this? 
-❓ Checked if instruction is a question. (323 ms)
-🤖 Analyzed email for your question. (659 ms)
-🗣️ Answer: The provided content is an alert from Safety Posts recommending that people keep their car doors locked when they are in the car or anywhere they park, including at home. This recommendation follows an incident involving a man allegedly attempting to break into a vehicle.
-🤖 What would you like to do?
-(proceed, quit)> delete
-❓ Checked if instruction is a question. (181 ms)
-⚙️ Executed your instruction. (865 ms)
-✅ The email has been deleted as requested.
-📝 Built journal entry. (630 ms)
-💾 Saved journal to memo. (157 ms)
-🧩 Built presentation entry. (479 ms)
-📚 Saved presentation memo. (113 ms)
-📨 Loaded email e500b9. (414 ms)
-🧽 Pre-filtered email markup. (1 ms)
-🔎 Searched memo journal context. (123 ms)
-🎛️ Searched presentation memo context. (145 ms)
-🎯 Extracted presentation preferences. (0 ms)
-🧠 Summarized email. (871 ms)
-🗺️ Generated recommendation. (1160 ms)
-
-========== NEXT EMAIL ==========
-From: Safety Posts <reply@ss.email.nextdoor.com>
-Subj: On April 9 at approximately midnight, this female subject attempted
-Date: 2026-04-11T14:18:07.000Z
-🗣️ Summary: Attempted Bike Theft Report (4/9)
-
-Report of attempted bike theft by female subject near the city center on April 9 (midnight). See attached Nextdoor post for details.
-
-Recommended action:
-(Guess) mark as read; move to archive. This is an informal neighborhood safety post (Nextdoor) about a suspicious incident. It's not relevant for specific folders and can be archived after review..
-===============================
-
-🤖 What would you like to do?
-(proceed, quit)> delete
-❓ Checked if instruction is a question. (323 ms)
-⚙️ Executed your instruction. (793 ms)
-✅ I have deleted the email as requested.
-📝 Built journal entry. (1116 ms)
-💾 Saved journal to memo. (166 ms)
-🧩 Built presentation entry. (538 ms)
-📚 Saved presentation memo. (110 ms)
-📨 Loaded email 1b1b4c. (405 ms)
-🧽 Pre-filtered email markup. (1 ms)
-🔎 Searched memo journal context. (127 ms)
-🎛️ Searched presentation memo context. (111 ms)
-🎯 Extracted presentation preferences. (0 ms)
-🧠 Summarized email. (835 ms)
-🗺️ Generated recommendation. (1278 ms)
-
-========== NEXT EMAIL ==========
-From: Only Deals <jake@evergreenavenue.ccsend.com>
-Subj: Reminder: Clean Flip  - Assignable Contract
-Date: 2026-04-11T11:01:45.000Z
-🗣️ Summary: Clean Flip Deal - Assignable Contract Reminder
-
-Reminder for Clean Flip deal. PP $439K, ARV $630K+. Assignable contract info and contact provided (Jake). Due diligence needed.
-
-Recommended action:
-(Guess) mark as read + move to Real Estate Investment. This is a commercial email promoting real estate deals (flip/assignment contract). The destination 'Real Estate Investment' was created for this purpose..
-===============================
-
-🤖 What would you like to do?
-(proceed, quit)> p
-Proceed mode: applying recommended action without journal update.
-⚙️ Executed recommended action. (2050 ms)
-✅ Marked the email as read and moved it to the 'Real Estate Investment' folder per your instructions.
-
-📥 Refreshed emails at page boundary. (2184 ms)
-📋 Reloaded unread inbox page. (436 ms)
-No unread emails remain after refresh. Running graceful shutdown...
-🧾 Planning queued mutations...
-📋 3 email(s) with pending mutations:
-
-  0426ac        Man arrested after allegedly attempting to get ...
-    → delete (trash)
-
-  e500b9        On April 9 at approximately midnight, this fema...
-    → delete (trash)
-
-  1b1b4c        Reminder: Clean Flip  - Assignable Contract
-    → mark as read
-    → move to "Real Estate Investment"
-
-Plan: 4 action(s) on 3 email(s)
-
-Run 'google-email apply' to execute these changes on Gmail.
-🧾 Planned queued mutations. (410 ms)
-🚀 Applying queued mutations...
-Applying 4 action(s) to 3 email(s)...
-
-  ✓ 0426ac      delete
-  ✓ e500b9      delete
-  ✓ 1b1b4c      mark read
-  ✓ 1b1b4c      move → Real Estate Investment
-
-✓ Successfully applied 4 action(s).
-🚀 Applied queued mutations. (3282 ms)
-🧹 Cleaning local google-email cache...
-✓ Deleted 3 cached email file(s) from storage/.
-🧹 Cleaned local google-email cache. (437 ms)
-[user@myarch agents]$
-```

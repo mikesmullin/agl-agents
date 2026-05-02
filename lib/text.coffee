@@ -1,4 +1,4 @@
-import { _G } from './globals.mjs'
+import { _G } from './globals.coffee'
 
 export xmlEscape = _G.xmlEscape = (s = '') ->
   String(s)

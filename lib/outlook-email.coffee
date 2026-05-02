@@ -1,7 +1,7 @@
 import { YAML } from 'bun'
 import { readFile } from 'fs/promises'
 import { resolve } from 'path'
-import { _G } from './globals.mjs'
+import { _G } from './globals.coffee'
 
 CONFIG_PATH = resolve(process.cwd(), 'config.yaml')
 
@@ -31,13 +31,13 @@ export hasPendingMutations = _G.hasPendingMutations = (planOutput) ->
 
 normalizeDoc = (parsed) ->
   if Array.isArray(parsed)
-    docs = parsed.filter((d) -> d and typeof d === 'object' and not Array.isArray(d))
+    docs = parsed.filter((d) -> d and typeof d is 'object' and not Array.isArray(d))
     if docs.length is 0 then return parsed[0] or {}
     merged = {}
     for d in docs
       Object.assign(merged, d)
     return merged
-  if parsed and typeof parsed === 'object' then return parsed
+  if parsed and typeof parsed is 'object' then return parsed
   {}
 
 loadFolderPurposeConfig = ->
@@ -45,7 +45,7 @@ loadFolderPurposeConfig = ->
     configText = await readFile(CONFIG_PATH, 'utf8')
     config = YAML.parse(_G.mustBeStringOr(configText, '')) or {}
     folders = config?.outlook_email?.folders
-    if folders and typeof folders === 'object' and not Array.isArray(folders) then folders else {}
+    if folders and typeof folders is 'object' and not Array.isArray(folders) then folders else {}
   catch
     {}
 
@@ -105,7 +105,7 @@ export loadMoveFolderCache = _G.loadMoveFolderCacheLib = ->
 
     _G.cachedMoveFolders = folderNames.map((name) ->
       name: name
-      purpose: _G.mustBeTrimmedStringOr(purposeConfig?.[name], '')
+      purpose: _G.mustBeTrimmedStringOr(purposeConfig?[name], '')
     )
 
     _G.log('folders.cache.loaded',
@@ -183,17 +183,20 @@ export loadDecisionEmail = _G.loadDecisionEmail = (emailId) ->
   summaryInput = buildDecisionEmailText(envelope, prefilteredBody)
   { emailText, envelope, prefilteredBody, summaryInput }
 
-export pullBatch = _G.pullBatchLib = (spawn, { limit = 10, since = '14 days ago', log, traceEmoji = '📥', traceLabel = 'Pulling latest emails' } = {}) ->
+export pullBatch = _G.pullBatchLib = (spawn, { limit = null, since = '14 days ago', log, traceEmoji = '📥', traceLabel = 'Pulling latest emails' } = {}) ->
   _G.traceStep(traceEmoji, traceLabel, ->
     if typeof log is 'function'
       log('loop.pull.begin', { since, limit })
-    await spawn(
-      'outlook-email'
-      ['pull', '--since', since, '--limit', String(limit)]
+    args = ['pull', '--since', since, '--yaml']
+    args.push '--limit', String(limit) if limit?
+    result = await spawn(
+      'outlook-email',
+      args,
       { assertExit0: true }
     )
     if typeof log is 'function'
       log('loop.pull.done')
+    result
   )
 
 export loadPageIds = _G.loadPageIdsLib = (spawn, { limit = 10, traceEmoji = '📋', traceLabel = 'Loading unread inbox page' } = {}) ->
@@ -204,18 +207,18 @@ export loadPageIds = _G.loadPageIdsLib = (spawn, { limit = 10, traceEmoji = '�
     listEmailIds(list.stdout)
   )
 
-_G.endEmailTransaction = ->
-  planTrace = _G.traceStart('🧾', 'Planning queued mutations')
-  await _G.spawn('outlook-email', ['plan'], { assertExit0: true, stdio: 'inherit' })
-  planTrace.traceEnd()
+_G.planEmailTransactionLib = ->
+  await _G.spawn 'outlook-email', ['plan']
 
-  applyTrace = _G.traceStart('🚀', 'Applying queued mutations')
-  await _G.spawn('outlook-email', ['apply', '--yes'], { assertExit0: true, stdio: 'inherit' })
-  applyTrace.traceEnd()
+_G.applyEmailTransactionLib = ->
+  await _G.spawn 'outlook-email', ['apply', '--yes']
 
-  cleanTrace = _G.traceStart('🧹', 'Cleaning local outlook-email cache')
-  await _G.spawn('outlook-email', ['clean'], { assertExit0: true, stdio: 'inherit' })
-  cleanTrace.traceEnd()
+_G.cleanEmailTransactionLib = ->
+  await _G.spawn 'outlook-email', ['clean']
+
+_G.clearEmailTransactionLib = (id, { erase = false } = {}) ->
+  args = if erase then ['clear', '--erase', id] else ['clear', id]
+  await _G.spawn 'outlook-email', args
 
 # --- Email provider adapter interface ---
 

@@ -1,6 +1,6 @@
 import { spawn as _spawn } from 'child_process'
-import { debugLog } from './debug.mjs'
-import { _G } from './globals.mjs'
+import { debugLog } from './debug.coffee'
+import { _G } from './globals.coffee'
 
 export spawn = _G.spawn = (cmd, args = [], options = {}) ->
   { stdio = 'pipe', assertExit0 = false, scope = 'agent' } = options

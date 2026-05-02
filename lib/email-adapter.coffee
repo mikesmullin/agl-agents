@@ -13,6 +13,6 @@ config = YAML.parse(configText or '') ? {}
 provider = String(config?.email?.provider ? 'google').toLowerCase()
 
 if provider is 'google'
-  await import './google-email.mjs'
+  await import('./google-email.coffee')
 else
-  await import './outlook-email.mjs'
+  await import('./outlook-email.coffee')

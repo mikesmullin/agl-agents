@@ -1,7 +1,7 @@
 import Agent from '../../node_modules/agl-ai/src/agent.mjs'
-import { _G } from '../../lib/globals.mjs'
+import { _G } from '../../lib/globals.coffee'
 
-_G.fingerprintEmailMicroagent = emailText ->
+_G.fingerprintEmailMicroagent = (emailText) ->
   _G.traceStep '🔬', 'Fingerprinting email', ->
     microagent = await Agent.factory
       system_prompt: """

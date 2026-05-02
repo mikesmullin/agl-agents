@@ -1,18 +1,18 @@
 import { YAML } from 'bun'
-import { _G } from './globals.mjs'
+import { _G } from './globals.coffee'
 
 
 
 normalizeEmailDoc = (parsed) ->
   if Array.isArray(parsed)
-    docs = parsed.filter((d) -> d and typeof d === 'object' and not Array.isArray(d))
-    if docs.length === 0
+    docs = parsed.filter((d) -> d and typeof d is 'object' and not Array.isArray(d))
+    if docs.length is 0
       return parsed[0] or {}
     merged = {}
     for d in docs
       Object.assign(merged, d)
     return merged
-  if parsed and typeof parsed === 'object'
+  if parsed and typeof parsed is 'object'
     return parsed
   {}
 
@@ -36,8 +36,8 @@ decodeHtmlEntities = (text) ->
     next = decoded.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, (m, entity) ->
       if not entity then return m
 
-      if entity[0] === '#'
-        isHex = entity[1]?.toLowerCase() === 'x'
+      if entity[0] is '#'
+        isHex = entity[1]?.toLowerCase() is 'x'
         raw = if isHex then entity.slice(2) else entity.slice(1)
         num = parseInt(raw, if isHex then 16 else 10)
         if Number.isFinite(num) and num > 0
@@ -51,7 +51,7 @@ decodeHtmlEntities = (text) ->
       if Object.prototype.hasOwnProperty.call(named, key) then named[key] else m
     )
 
-    if next === decoded
+    if next is decoded
       break
     decoded = next
 
@@ -60,7 +60,7 @@ decodeHtmlEntities = (text) ->
 pickAttr = (tagText, attrName) ->
   re = new RegExp("#{attrName}\\s*=\\s*([\"'])(.*?)\\1", 'i')
   match = String(tagText or '').match(re)
-  decodeHtmlEntities(match?.[2] or '').trim()
+  decodeHtmlEntities(match?[2] or '').trim()
 
 normalizeWhitespace = (text) ->
   String(text or '')
@@ -83,7 +83,7 @@ htmlToReadableText = (html) ->
   )
 
   s = s.replace(/<a\b[^>]*>([\s\S]*?)<\/a>/gi, (full, inner) ->
-    tagStart = full.match(/<a\b[^>]*>/i)?.[0] or ''
+    tagStart = full.match(/<a\b[^>]*>/i)?[0] or ''
     label = pickAttr(tagStart, 'aria-label') or pickAttr(tagStart, 'title')
     href = pickAttr(tagStart, 'href')
 
@@ -123,7 +123,7 @@ export prefilterEmailForSummary = _G.prefilterEmailForSummary = (emailYamlText) 
 
   bodyType = String(doc?.body?.contentType or '').toLowerCase()
   bodyRaw = String(doc?.body?.content or '')
-  bodyText = if bodyType === 'html' then htmlToReadableText(bodyRaw) else normalizeWhitespace(decodeHtmlEntities(bodyRaw))
+  bodyText = if bodyType is 'html' then htmlToReadableText(bodyRaw) else normalizeWhitespace(decodeHtmlEntities(bodyRaw))
 
   lines = [
     if snippet then "Snippet: #{snippet}" else ''

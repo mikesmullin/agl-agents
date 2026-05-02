@@ -1,5 +1,5 @@
 import Agent from '../../node_modules/agl-ai/src/agent.mjs'
-import { _G } from '../../lib/globals.mjs'
+import { _G } from '../../lib/globals.coffee'
 
 _G.hasFormattingInstructions = (instruction, emailContent) ->
   _G.traceStep '🧩', 'Building presentation entry', ->

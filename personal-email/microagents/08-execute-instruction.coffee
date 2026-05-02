@@ -1,5 +1,5 @@
 import Agent from '../../node_modules/agl-ai/src/agent.mjs'
-import { _G } from '../../lib/globals.mjs'
+import { _G } from '../../lib/globals.coffee'
 
 export executeInstructionMicroagent = _G.executeInstructionMicroagent = (emailId, instruction) ->
   microagent = await Agent.factory
@@ -40,7 +40,7 @@ export executeInstructionMicroagent = _G.executeInstructionMicroagent = (emailId
     if move.code isnt 0
       return [move.stderr, move.stdout].filter(Boolean).join(' ') or 'Failed to queue move.'
     await _G.emailRead emailId # mark-as-read is implicit
-    `Queued move to "#{requestedFolder}".`
+    "Queued move to \"#{requestedFolder}\"."
 
   prompt = """
     <user_instruction>
@@ -56,8 +56,8 @@ export executeInstructionMicroagent = _G.executeInstructionMicroagent = (emailId
   _G.log 'microagent.result',
     name: 'executeInstructionMicroagent'
     input:
-      emailId
-      instruction
+      emailId: emailId
+      instruction: instruction
       validMoveFolders: _G.cachedMoveFolders
     output: result
   , 'microagent'

@@ -1,7 +1,7 @@
 import { YAML } from 'bun'
 import { readFile } from 'fs/promises'
 import { resolve } from 'path'
-import { _G } from './globals.mjs'
+import { _G } from './globals.coffee'
 
 CONFIG_PATH = resolve(process.cwd(), 'config.yaml')
 
@@ -29,13 +29,13 @@ export hasPendingMutations = _G.hasPendingMutations = (planOutputYaml) ->
 
 normalizeDoc = (parsed) ->
   if Array.isArray(parsed)
-    docs = parsed.filter((d) -> d and typeof d === 'object' and not Array.isArray(d))
-    if docs.length === 0 then return parsed[0] or {}
+    docs = parsed.filter((d) -> d and typeof d is 'object' and not Array.isArray(d))
+    if docs.length is 0 then return parsed[0] or {}
     merged = {}
     for d in docs
       Object.assign(merged, d)
     return merged
-  if parsed and typeof parsed === 'object' then return parsed
+  if parsed and typeof parsed is 'object' then return parsed
   {}
 
 loadFolderPurposeConfig = ->
@@ -43,7 +43,7 @@ loadFolderPurposeConfig = ->
     configText = await readFile(CONFIG_PATH, 'utf8')
     config = YAML.parse(_G.mustBeStringOr(configText, '')) or {}
     labels = config?.google_email?.labels
-    if labels and typeof labels === 'object' and not Array.isArray(labels) then labels else {}
+    if labels and typeof labels is 'object' and not Array.isArray(labels) then labels else {}
   catch
     {}
 
@@ -51,7 +51,7 @@ folderName = (folder) ->
   _G.mustBeTrimmedStringOr(folder?.name, '')
 
 export renderMoveFolderChoices = _G.renderMoveFolderChoicesLib = (folders = [], { includeArchive = true, fallback = '(none loaded)' } = {}) ->
-  if not Array.isArray(folders) or folders.length === 0
+  if not Array.isArray(folders) or folders.length is 0
     return if includeArchive then 'archive: remove from inbox without moving to a named folder' else String(fallback)
 
   lines = folders.map((folder) ->
@@ -67,7 +67,7 @@ export renderMoveFolderChoices = _G.renderMoveFolderChoicesLib = (folders = [], 
 
 export findMoveFolder = _G.findMoveFolderLib = (folders = [], requestedFolder = '') ->
   exact = _G.mustBeTrimmedStringOr(requestedFolder, '')
-  if Array.isArray(folders) then folders.find((folder) -> folderName(folder) === exact) ? null else null
+  if Array.isArray(folders) then folders.find((folder) -> folderName(folder) is exact) ? null else null
 
 firstRecipientAddress = (emailDoc) ->
   to = if Array.isArray(emailDoc?.toRecipients) then emailDoc.toRecipients else []
@@ -96,14 +96,14 @@ export loadMoveFolderCache = _G.loadMoveFolderCacheLib = ->
     purposeConfig = await loadFolderPurposeConfig()
     folderNames = [...new Set(
       labelRows
-        .filter((label) -> String(label?.type or '').toLowerCase() === 'user')
+        .filter((label) -> String(label?.type or '').toLowerCase() is 'user')
         .map((label) -> _G.mustBeTrimmedStringOr(label?.name, ''))
         .filter(Boolean),
     )].sort((a, b) -> a.localeCompare(b))
 
     _G.cachedMoveFolders = folderNames.map((name) ->
       name: name
-      purpose: _G.mustBeTrimmedStringOr(purposeConfig?.[name], '')
+      purpose: _G.mustBeTrimmedStringOr(purposeConfig?[name], '')
     )
 
     _G.log('folders.cache.loaded',
@@ -116,7 +116,7 @@ export loadMoveFolderCache = _G.loadMoveFolderCacheLib = ->
 export invalidFolderMessage = _G.invalidFolderMessageLib = (requestedFolder, folders = []) ->
   exact = _G.mustBeTrimmedStringOr(requestedFolder, '')
   lower = exact.toLowerCase()
-  caseHint = folders.find((folder) -> folderName(folder).toLowerCase() === lower)?.name ? null
+  caseHint = folders.find((folder) -> folderName(folder).toLowerCase() is lower)?.name ? null
   sample = renderMoveFolderChoices(folders.slice(0, 20))
   hint = if caseHint then " Did you mean \"#{caseHint}\"?" else ''
   "Invalid folder \"#{exact}\".#{hint} Folder names are case-sensitive. Available folders:\n#{sample}"
@@ -189,39 +189,42 @@ export loadDecisionEmail = _G.loadDecisionEmail = (emailId) ->
   summaryInput = buildDecisionEmailText(envelope, prefilteredBody)
   { emailText, envelope, prefilteredBody, summaryInput }
 
-export pullBatch = _G.pullBatchLib = (spawn, { limit = 10, since = '14 days ago', log, traceEmoji = '📥', traceLabel = 'Pulling latest emails' } = {}) ->
+export pullBatch = _G.pullBatchLib = (spawn, { limit = null, since = '14 days ago', log, traceEmoji = '📥', traceLabel = 'Pulling latest emails' } = {}) ->
   _G.traceStep(traceEmoji, traceLabel, ->
-    if typeof log === 'function'
+    if typeof log is 'function'
       log('loop.pull.begin', { since, limit })
-    await spawn(
+    args = ['pull', '--since', since, '--yaml']
+    args.push '--limit', String(limit) if limit?
+    result = await spawn(
       'google-email',
-      ['pull', '--since', since, '--limit', String(limit)],
+      args,
       { assertExit0: true },
     )
-    if typeof log === 'function'
+    if typeof log is 'function'
       log('loop.pull.done')
+    result
   )
 
 export loadPageIds = _G.loadPageIdsLib = (spawn, { limit = 10, traceEmoji = '📋', traceLabel = 'Loading unread inbox page' } = {}) ->
   _G.traceStep(traceEmoji, traceLabel, ->
     list = await spawn('google-email', ['inbox', 'list', '--limit', String(limit), '--yaml'])
-    if list.code !== 0
+    if list.code isnt 0
       throw new Error("google-email inbox list failed:\n#{list.stderr or list.stdout}")
     listEmailIds(list.stdout)
   )
 
-_G.endEmailTransaction = ->
-  planTrace = _G.traceStart('🧾', 'Planning queued mutations')
-  await _G.spawn('google-email', ['plan'], { assertExit0: true, stdio: 'inherit' })
-  planTrace.traceEnd()
+_G.planEmailTransactionLib = ->
+  await _G.spawn 'google-email', ['plan']
 
-  applyTrace = _G.traceStart('🚀', 'Applying queued mutations')
-  await _G.spawn('google-email', ['apply'], { assertExit0: true, stdio: 'inherit' })
-  applyTrace.traceEnd()
+_G.applyEmailTransactionLib = ->
+  await _G.spawn 'google-email', ['apply']
 
-  cleanTrace = _G.traceStart('🧹', 'Cleaning local google-email cache')
-  await _G.spawn('google-email', ['clean'], { assertExit0: true, stdio: 'inherit' })
-  cleanTrace.traceEnd()
+_G.cleanEmailTransactionLib = ->
+  await _G.spawn 'google-email', ['clean']
+
+_G.clearEmailTransactionLib = (id, { erase = false } = {}) ->
+  args = if erase then ['clear', '--erase', id] else ['clear', id]
+  await _G.spawn 'google-email', args
 
 # --- Email provider adapter interface ---
 

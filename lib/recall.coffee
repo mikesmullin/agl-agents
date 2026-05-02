@@ -1,6 +1,6 @@
 import { YAML } from 'bun'
 import { readFile } from 'fs/promises'
-import { _G } from './globals.mjs'
+import { _G } from './globals.coffee'
 
 # ---------------------------------------------------------------------------
 # Internal helpers
