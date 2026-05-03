@@ -40,35 +40,47 @@ export reportSystem = (trialDir, runId) ->
     bestEffortRationale = seance?.best_effort_rationale or null
     seanceVerified      = seance?.verification_passed is true
 
-    # Call coach-row for feedback (and backprop if seance didn't verify)
+    if trial_result.passed
+      # PASS: skip coach LLM — carry forward the rationale that just worked
+      rows.push
+        entityId: entity.id
+        passed: true
+        given: trial_result.given
+        correct: trial_result.correct
+        trialRationale: trial_result.trial_rationale
+        originalRationale: trial_result.original_rationale
+        feedback: 'CONTINUE: Rationale correctly guided the agent. No changes needed.'
+        backpropRationale: trial_result.trial_rationale
+        seanceNote: ''
+
+      await _G.Entity.patch entity, '_trial',
+        { ...(entity._trial or {}), backprop_rationale: trial_result.trial_rationale }
+
+      continue
+
+    # FAIL: call coach-row for feedback + new backprop_rationale
     coachRow = await _G.coachRowMicroagent(
       entity.id,
       trial_result.given,
       trial_result.correct,
       trial_result.trial_rationale,
       trial_result.original_rationale,
-      # For failed entities with seance: pass verified/best-effort as extra context
-      if not trial_result.passed and (verifiedRationale or bestEffortRationale)
+      # Pass seance context when available
+      if verifiedRationale or bestEffortRationale
         "Seance #{if seanceVerified then 'VERIFIED' else 'best-effort'} rationale: #{verifiedRationale or bestEffortRationale}"
       else ''
     )
 
-    # backprop_rationale priority:
-    #   Passing: keep the rationale that just worked (prevents coach drift/regression)
-    #   Failing: 1. Seance-verified (proven to work at least once)
-    #            2. Coach-row output (best judgment without verification)
-    backpropRationale = if trial_result.passed
-      trial_result.trial_rationale
-    else
-      verifiedRationale or coachRow.backprop_rationale or bestEffortRationale or ''
+    # backprop_rationale priority for failures:
+    #   1. Seance-verified (proven to work at least once)
+    #   2. Coach-row output (best judgment without verification)
+    backpropRationale = verifiedRationale or coachRow.backprop_rationale or bestEffortRationale or ''
 
-    seanceNote = if not trial_result.passed
-      if seanceVerified then ' ✓seance' else if seance? then ' ⚠seance' else ''
-    else ''
+    seanceNote = if seanceVerified then ' ✓seance' else if seance? then ' ⚠seance' else ''
 
     rows.push
       entityId: entity.id
-      passed: trial_result.passed
+      passed: false
       given: trial_result.given
       correct: trial_result.correct
       trialRationale: trial_result.trial_rationale
@@ -77,7 +89,7 @@ export reportSystem = (trialDir, runId) ->
       backpropRationale: backpropRationale
       seanceNote: seanceNote
 
-    # Persist backprop_rationale for generation chain
+    # Persist backprop_rationale for generation chain (FAIL path only; PASS is persisted above)
     await _G.Entity.patch entity, '_trial',
       { ...(entity._trial or {}), backprop_rationale: backpropRationale }
 

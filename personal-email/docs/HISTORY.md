@@ -56,7 +56,7 @@ _G.Entity = Entity
 use this pattern:
 ```
 _G.Entity = class Entity
-...
+```
 
 use this pattern for `World` also
 
@@ -277,6 +277,13 @@ then proceed to implement the plan.
 
 ...
 
+- read `**/README.md` files in this workspace to understand this project
+- specifically we are focused on trial-runner agent running against personal-email agent
+
+we have the trial runner working mostly.
+
+we've run a few trials with moderately positive outcomes.
+
 from here i want to measure how well our report card score is improving across trial runs
 
 - run a few more trials (up to trial 010) 
@@ -292,7 +299,7 @@ the final challenge remains:
 
 right now the backprop_rationale
 can become a crutch during trials
-because its personalized and stored w/ the email
+because its personalized and stored w/ the email (so on load, its 100% perfect recall/matching w/ the mock journal entry)
 
 but this is not the same as what would happen outside of the test environment;
 
@@ -308,4 +315,15 @@ and (despite the new challenge of (whether our journal search capability can rel
 the personal-email agent still remains successful (at obtaining high marks on its repord card).
 
 
+how do you recommend we do that?
+show your plan.
+ask me for approval before coding.
+
+...
+
+the learning is working, even though we swapped-out our mock(perfect-recall) system with the ACTUAL personal-email journal system. this is a tremendous achievement!
+
+a few improvements i noticed we can make:
+- let's only invoke the Coach per-rw LLM on rows that have FAILed (this will save some inference time/cost)
+- let's update the trial-runner README.md to reflect that fact that we have successfully introduced the journal systemM (it currently mentions why we don't use it; we should still keep that sentiment around because its useful to show our scientific approach (how we built up to this point), but let's rephrase it so it's clear we are using the journal successfully now)
 

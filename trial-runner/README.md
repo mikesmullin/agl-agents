@@ -31,17 +31,20 @@ Trial-runner draws its training examples exclusively from `personal-email/db/_ar
 | 1 | **page** | no-op (no Gmail pull) |
 | 2 | **load** | mocked: parses `origin.raw` from the trial entity instead of calling `google-email` |
 | 3 | **fingerprint** | real LLM inference (same microagent as personal-email) |
-| 4 | **recall** | **mocked**: injects `_trial.trial_rationale` directly as `recall.journalContext` — simulating perfect journal recall |
-| 5 | **summarize** | real LLM inference |
-| 6 | **recommend** | real LLM inference; also captures the full context window in `retrospective.stage_6_context` |
-| 7 | **display** | deterministic |
-| 8 | **operator** | **mocked gate**: compares `recommendation.operations` vs `_trial.correct_answer`; marks PASS/FAIL |
-| 9 | **seance** | for FAIL entities: replays the stage-6 context window and asks the model why it chose wrong |
-| 10 | **report** | runs coach microagents; writes `report-card.md`; stores `backprop_rationale` on each entity |
+| 4 | **seed-journal** | writes `_trial.trial_rationale` as structured journal entries into an isolated per-trial memo database (`trial/NNN/journal`) |
+| 5 | **recall** | **real** hybrid vector+keyword+sender search against the trial journal — same system used by personal-email in production |
+| 6 | **summarize** | real LLM inference |
+| 7 | **recommend** | real LLM inference; also captures the full context window in `retrospective.stage_6_context` |
+| 8 | **display** | deterministic |
+| 9 | **operator** | **mocked gate**: compares `recommendation.operations` vs `_trial.correct_answer`; marks PASS/FAIL |
+| 10 | **seance** | for FAIL entities: replays the stage-6 context window and asks the model why it chose wrong |
+| 11 | **report** | for FAIL entities: runs coach LLM for feedback + new `backprop_rationale`; PASS entities carry forward existing rationale without an LLM call; writes `report-card.md` |
 
-### Why mock recall?
+### How recall evolved
 
-The journal vector-search strategy has imperfect recall — sometimes the wrong entry surfaces.  Trial-runner isolates the hypothesis: *given perfect recall, does the rationale text cause the recommend microagent to choose correctly?*  Only after rationale quality is proven at scale should the search strategy be optimised separately.
+Early generations used a **mocked recall** step that injected `_trial.trial_rationale` directly as `recall.journalContext`, simulating perfect recall.  This isolated the core hypothesis: *given perfect recall, does the rationale text cause the recommend microagent to choose correctly?*  Proving that first let us iterate fast on rationale quality without being confounded by search quality.
+
+Once rationale quality was proven at scale (trials 007–010 reached 100% Grade A with mocked recall), we introduced the **seed-journal + real recall** approach (trial 013 onward).  The coach's `backprop_rationale` is now written as structured journal entries into an isolated per-trial memo store; the real `recallSystem` then searches that store using the same hybrid vector+keyword+sender strategy as production.  Trials 013–014 confirmed the system generalises: the agent scores **92–100% Grade A** even when recall is no longer hand-delivered — demonstrating that the self-learning loop produces rationale phrasing that is both *correct* and *searchable*.
 
 ### The learning loop (generations)
 

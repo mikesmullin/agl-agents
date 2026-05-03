@@ -7,6 +7,8 @@ import '../lib/text.coffee'
 import '../lib/validate.coffee'
 import '../lib/email-adapter.coffee'
 import '../lib/html-email.coffee'
+import '../lib/memo.coffee'
+import '../lib/recall.coffee'
 import '../lib/async.coffee'
 
 # Reuse personal-email models (entity dir is overridden below before init)
@@ -23,10 +25,13 @@ import { displaySystem } from '../personal-email/systems/display.coffee'
 # Trial-specific systems
 import { setupSystem } from './systems/setup.coffee'
 import { pageSystem } from './systems/page.coffee'
-import { recallSystem } from './systems/recall.coffee'
+import { seedJournalSystem } from './systems/seed-journal.coffee'
 import { operatorSystem } from './systems/operator.coffee'
 import { seanceSystem } from './systems/seance.coffee'
 import { reportSystem } from './systems/report.coffee'
+
+# Real recall from personal-email (hybrid vector+keyword+sender search)
+import { recallSystem } from '../personal-email/systems/recall.coffee'
 
 Agent.default.model = _G.MODEL
 
@@ -73,6 +78,10 @@ if entitiesCreated is 0
 _G.ENTITY_DIR = trialEntityDir
 _G.ARCHIVE_DIR = trialDir  # unused in trial pipeline but required by Entity.archive
 
+# Point memo to an isolated per-trial journal (never touches the real journal)
+_G.MEMO_DB = "#{trialDir}/journal"
+_G.DB_DIR   = trialDir  # temp files written here during saveJournalEntry
+
 await _G.Entity.init()
 
 # Load move-folder cache (read-only call; passes through mock to real google-email)
@@ -87,14 +96,15 @@ console.log "\n🧪 Trial run #{runId} — #{entitiesCreated} entities\n"
 # Run the pipeline once (no loop — each trial run is a single pass)
 # ---------------------------------------------------------------------------
 
-await pageSystem()        # no-op
-await loadSystem()        # parse origin.raw via mocked spawn
-await fingerprintSystem() # real LLM inference
-await recallSystem()      # mock: inject trial_rationale as journal context
-await summarizeSystem()   # real LLM inference
-await recommendSystem()   # real LLM inference + captures retrospective context
-await displaySystem()     # deterministic log
-await operatorSystem()    # pass/fail gate: compare recommendation vs correct answer
+await pageSystem()          # no-op
+await loadSystem()          # parse origin.raw via mocked spawn
+await fingerprintSystem()   # real LLM inference
+await seedJournalSystem()   # write trial_rationale as structured journal entries to _G.MEMO_DB
+await recallSystem()        # real hybrid recall against the trial journal
+await summarizeSystem()     # real LLM inference
+await recommendSystem()     # real LLM inference + captures retrospective context
+await displaySystem()       # deterministic log
+await operatorSystem()      # pass/fail gate: compare recommendation vs correct answer
 
 # Seance: for failed entities, replay context window to get introspective explanation
 await seanceSystem()
