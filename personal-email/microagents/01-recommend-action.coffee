@@ -23,7 +23,8 @@ _G.recommendActionMicroagent = (emailText, journalMatches) ->
             description: """
               Which operation(s) do you recommend for the user to take?
               **IMPORTANT:** If journal-context recommends to delete the email, you MUST recommend delete (without archive).
-              A move operation must match existing destination (case-sensitive).
+              A move operation must use ONLY the folder name — the text appearing BEFORE the ' — ' separator in the destination list. Never include the separator or any description text after it.
+              A move operation must match existing destination exactly (case-sensitive).
               """
           rationale:
             type: 'string'
@@ -55,7 +56,7 @@ _G.recommendActionMicroagent = (emailText, journalMatches) ->
     result = await microagent.run { prompt }
     ref = if result.journal_id == 0 then 'Guess' else "Journal #{result.journal_id}"
     confidence = Number(result.confidence ? 0)
-    output = { ref, confidence, ...result }
+    output = { ref, confidence, ...result, ctx: microagent.ctx }
     _G.log 'microagent.result',
       name: 'recommendActionMicroagent'
       input: { emailText, journalMatches }

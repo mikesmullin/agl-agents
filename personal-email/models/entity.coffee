@@ -3,21 +3,21 @@ import { resolve } from 'path'
 import { YAML } from 'bun'
 import { _G } from '../../lib/globals.coffee'
 
-ENTITY_DIR = resolve process.cwd(), 'personal-email/db/entities'
-ARCHIVE_DIR = resolve process.cwd(), 'personal-email/db/_archive'
+_entityDir = -> _G.ENTITY_DIR or resolve process.cwd(), 'personal-email/db/entities'
+_archiveDir = -> _G.ARCHIVE_DIR or resolve process.cwd(), 'personal-email/db/_archive'
 
 _G.Entity = class Entity
   @init: ->
-    await mkdir ENTITY_DIR, { recursive: true }
+    await mkdir _entityDir(), { recursive: true }
     # Load all existing entity YAMLs from disk into World on startup
-    files = await readdir ENTITY_DIR
+    files = await readdir _entityDir()
     for file in files
       if file.endsWith '.yaml'
         id = file.replace /\.yaml$/, ''
         await @load id
 
   @_path: (id) ->
-    resolve ENTITY_DIR, "#{id}.yaml"
+    resolve _entityDir(), "#{id}.yaml"
 
   @load: (id) ->
     try
@@ -40,9 +40,9 @@ _G.Entity = class Entity
     updated
 
   @archive: (id) ->
-    await mkdir ARCHIVE_DIR, { recursive: true }
+    await mkdir _archiveDir(), { recursive: true }
     try
-      await rename @_path(id), resolve(ARCHIVE_DIR, "#{id}.yaml")
+      await rename @_path(id), resolve(_archiveDir(), "#{id}.yaml")
     catch # file may not exist
     _G.World.remove id
 

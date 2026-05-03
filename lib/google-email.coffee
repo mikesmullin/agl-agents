@@ -52,16 +52,16 @@ folderName = (folder) ->
 
 export renderMoveFolderChoices = _G.renderMoveFolderChoicesLib = (folders = [], { includeArchive = true, fallback = '(none loaded)' } = {}) ->
   if not Array.isArray(folders) or folders.length is 0
-    return if includeArchive then 'archive: remove from inbox without moving to a named folder' else String(fallback)
+    return if includeArchive then 'archive — remove from inbox without moving to a named folder' else String(fallback)
 
   lines = folders.map((folder) ->
     name = folderName(folder)
     purpose = _G.mustBeTrimmedStringOr(folder?.purpose, '')
-    if purpose then "- #{name}: #{purpose}" else "- #{name}:"
+    if purpose then "- #{name} — #{purpose}" else "- #{name}"
   )
 
   if includeArchive
-    lines.push('archive: remove from inbox without moving to a named folder')
+    lines.push('archive — remove from inbox without moving to a named folder')
 
   lines.join('\n') or String(fallback)
 
@@ -119,7 +119,7 @@ export invalidFolderMessage = _G.invalidFolderMessageLib = (requestedFolder, fol
   caseHint = folders.find((folder) -> folderName(folder).toLowerCase() is lower)?.name ? null
   sample = renderMoveFolderChoices(folders.slice(0, 20))
   hint = if caseHint then " Did you mean \"#{caseHint}\"?" else ''
-  "Invalid folder \"#{exact}\".#{hint} Folder names are case-sensitive. Available folders:\n#{sample}"
+  "Invalid folder. #{hint} Folder names are case-sensitive. Try another folder name."
 
 export extractEmailEnvelope = _G.extractEmailEnvelope = (emailYamlText) ->
   tryParse = (text) ->

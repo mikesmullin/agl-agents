@@ -46,10 +46,10 @@ Each iteration executes all systems in sequence against all live entities in Wor
 | 3 | **fingerprint** — extract keywords and intent | `content.body` | `fingerprint.keywords`<br>`fingerprint.sender_offers`<br>`fingerprint.sender_expects`<br>`fingerprint.reader_value` |
 | 4 | **recall** — retrieve journal and presentation context | `content.body`<br>`fingerprint.keywords`<br>`fingerprint.sender_offers`<br>`fingerprint.sender_expects`<br>`fingerprint.reader_value`<br>`envelope.senderEmail` | `recall.journalContext`<br>`recall.presentationCandidate`<br>`recall.usePresentationPreferences` |
 | 5 | **summarize** — generate headline and summary | `content.body`<br>`recall.usePresentationPreferences`<br>`recall.presentationCandidate.formatting_instructions` | `summary.headline`<br>`summary.text` |
-| 6 | **recommend** — choose action and confidence | `content.body`<br>`recall.journalContext` | `recommendation.label`<br>`recommendation.confidence`<br>`recommendation.journal_id`<br>`recommendation.ref`<br>`recommendation.operations`<br>`recommendation.rationale` |
+| 6 | **recommend** — choose action and confidence | `content.body`<br>`recall.journalContext` | `recommendation.label`<br>`recommendation.confidence`<br>`recommendation.journal_id`<br>`recommendation.ref`<br>`recommendation.operations`<br>`recommendation.rationale`<br>`retrospective.stage_6_context` (context window snapshot for seance)<br>`retrospective.stage_6_model` |
 | 7 | **display** — write email card to entity log | `envelope.from`<br>`envelope.subject`<br>`envelope.date`<br>`summary.headline`<br>`summary.text`<br>`recommendation.label`<br>`recommendation.confidence`<br>`recall.usePresentationPreferences`<br>`recall.presentationCandidate.formatting_instructions` | `log[]` |
-| 8 | **operator** (stage 1) — open human input gate | `recommendation.label` | `operator_input.instruction: null`<br>`operator_input.recommendation` |
-| 9 | **operator** (stage 2) — process instruction | ✍️ `operator_input.instruction`<br>`content.body`<br>`recommendation.label`<br>`recommendation.journal_id` | `operator.command`<br>`operator.instruction`<br>`operator.instructionOrRecommendation`<br>— or on memo/question:<br>`operator_input.last_result`<br>`operator_input.last_answer`<br>`operator_input.instruction` reset to `null` |
+| 8 | **operator** (stage 1) — open human input gate | `recommendation.label` | `operator_input.instruction: null`<br>`operator_input.operation: null`<br>`operator_input.rationale: null`<br>`operator_input.recommendation` |
+| 9 | **operator** (stage 2) — process instruction | ✍️ `operator_input.instruction` OR `operator_input.operation`<br>`operator_input.rationale` (optional)<br>`content.body`<br>`recommendation.label`<br>`recommendation.journal_id` | `operator.command`<br>`operator.instruction`<br>`operator.instructionOrRecommendation`<br>`operator.rationale`<br>— or on memo/question:<br>`operator_input.last_result`<br>`operator_input.last_answer`<br>`operator_input.instruction` reset to `null` |
 | 10 | **refresh** — clear components for re-processing | `operator.command` (`refresh` or `reload`) | clears `operator_input`<br>`fingerprint`<br>`recall`<br>`summary`<br>`recommendation`<br>`operator`<br>`execution`<br>`journal` |
 | 11 | **reload** — hot-reload microagents, then refresh | `operator.command` (`reload`) | reloads all microagent modules; same clears as **refresh** |
 | 12 | **execute** — run Gmail instruction | `operator.instruction`<br>`operator.command` | `execution.success`<br>`execution.summary`<br>`execution.instruction`<br>`log[]` |
@@ -61,6 +61,11 @@ Each iteration executes all systems in sequence against all live entities in Wor
 ## Operation
 
 The agent runs headlessly — no interactive prompt. To respond, edit the entity YAML in `personal-email/db/entities/<id>.yaml` directly. The agent picks up changes on the next loop iteration (every ~10 seconds).
+
+**`operator_input.instruction`** (legacy free-text) or **`operator_input.operation`** + **`operator_input.rationale`** (structured) — set one of these to unlock the next stage.
+
+- Use `operation` + `rationale` when you want to provide explicit training signal. The `rationale` (1-2 sentences) becomes the initial `trial_rationale` seed for trial-runner and is stored on `operator.rationale` for analysis.
+- Use `instruction` for ad-hoc commands (memo operations, questions, custom Gmail instructions).
 
 **`operator_input.instruction`** — set this field to one of:
 

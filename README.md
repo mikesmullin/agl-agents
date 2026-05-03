@@ -10,6 +10,7 @@ for just the cost of electricity to my GPU.
 | Agent | Purpose |
 | --- | --- |
 | [personal-email](./personal-email/) | Interactive Gmail triage agent that pulls unread mail, summarizes it, recommends actions, executes email mutations, recalls memo context, and applies formattng preferences. |
+| [trial-runner](./trial-runner/) | Self-improving test harness that evaluates any agl-agent against archived training entities, scores recommendations against operator-validated ground truth, and uses a coach LLM to backpropagate revised rationale across generations. |
 
 ## Repository Layout
 

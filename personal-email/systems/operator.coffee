@@ -9,15 +9,20 @@ export operatorSystem = ->
   for entity in pending
     _G.currentEntityId = entity.id
     await _G.Entity.patch entity, 'operator_input',
-      instruction: null
+      instruction: null     # activation input: proceed / skip / delete / move to X / memo ... / question / etc.
+      rationale: null       # why (1-2 sentences); flows into journal + seeds trial_rationale
+      notice_capture: null  # (future) what information to capture for notification toaster
+      notice_display: null  # (future) how to present it in the toaster summary
       recommendation: entity.recommendation.label
 
   # Stage 2: process entities where human has filled in an instruction
-  entities = _G.World.Entity__find (e) -> e.operator_input?.instruction? and not e.operator?
+  entities = _G.World.Entity__find (e) ->
+    e.operator_input? and not e.operator? and e.operator_input.instruction?
   for entity in entities
     _G.currentEntityId = entity.id
     { content, recommendation, operator_input } = entity
     instruction = String(operator_input.instruction or '').trim()
+    rationale   = String(operator_input.rationale   or '').trim()
     continue unless instruction
 
     normalizedInstruction = instruction.toLowerCase()
@@ -42,10 +47,16 @@ export operatorSystem = ->
       continue
 
     if normalizedInstruction is 'proceed'
+      # Compose instructionOrRecommendation with rationale so journal stage sees the human's reasoning
+      instructionOrRec = if rationale
+        "#{recommendation.label}. #{rationale}"
+      else
+        recommendation.label
       await _G.Entity.patch entity, 'operator',
         command: 'proceed'
         instruction: recommendation.label
-        instructionOrRecommendation: recommendation.label
+        instructionOrRecommendation: instructionOrRec
+        rationale: rationale
       continue
 
     if /\b(memo|memos|journal|journals)\b/i.test instruction
@@ -64,8 +75,10 @@ export operatorSystem = ->
         { ...entity.operator_input, instruction: null, last_answer: String(answer or '') }
       continue
 
-    # Custom instruction → proceed to execute stage
+    # Custom instruction → proceed to execute stage; include rationale in composed string for journal
+    instructionOrRec = if rationale then "#{instruction}. #{rationale}" else instruction
     await _G.Entity.patch entity, 'operator',
       command: 'execute'
       instruction: instruction
-      instructionOrRecommendation: instruction
+      instructionOrRecommendation: instructionOrRec
+      rationale: rationale

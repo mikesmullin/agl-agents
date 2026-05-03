@@ -1,6 +1,8 @@
 import { resolve } from 'path'
 
 export _G =
+  ENTITY_DIR: null  # override in trial mode before Entity.init()
+  ARCHIVE_DIR: null  # override in trial mode
   MODEL:
     process.env.AGENT_MODEL or
     # 'xai:grok-4-1-fast-reasoning'

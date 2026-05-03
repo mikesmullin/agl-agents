@@ -7,6 +7,9 @@ export recommendSystem = ->
     _G.currentEntityId = entity.id
     { content, recall } = entity
     result = await _G.recommendActionMicroagent content.body, recall.journalContext
+    if result.ctx
+      entity = await _G.Entity.patch entity, 'retrospective',
+        { ...(entity.retrospective or {}), stage_6_context: result.ctx, stage_6_model: _G.MODEL }
     await _G.Entity.patch entity, 'recommendation',
       journal_id: result.journal_id
       ref: result.ref
