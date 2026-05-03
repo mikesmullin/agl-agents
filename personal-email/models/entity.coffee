@@ -25,6 +25,7 @@ _G.Entity = class Entity
       entity = YAML.parse(text) ? { id }
     catch
       entity = { id }
+    entity.id = String(id)  # filename is canonical; YAML may misparse IDs like 0e6836 as numbers
     _G.World.set entity
     entity
 

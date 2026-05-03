@@ -29,11 +29,23 @@ import { seedJournalSystem } from './systems/seed-journal.coffee'
 import { operatorSystem } from './systems/operator.coffee'
 import { seanceSystem } from './systems/seance.coffee'
 import { reportSystem } from './systems/report.coffee'
+import { commitDbSystem, promoteFromRunId } from './systems/commit-db.coffee'
 
 # Real recall from personal-email (hybrid vector+keyword+sender search)
 import { recallSystem } from '../personal-email/systems/recall.coffee'
 
 Agent.default.model = _G.MODEL
+
+# ---------------------------------------------------------------------------
+# --promote <id>: skip pipeline, promote the specified trial, and exit
+# ---------------------------------------------------------------------------
+
+promoteIdx = process.argv.indexOf '--promote'
+promoteRunId = if promoteIdx >= 0 then (process.argv[promoteIdx + 1] or '').trim() or null else null
+
+if promoteRunId
+  await promoteFromRunId promoteRunId
+  process.exit 0
 
 # ---------------------------------------------------------------------------
 # Trial-mode spawn mock
@@ -118,3 +130,5 @@ console.log """
    Score: #{result.scoreLabel}
    Report: #{trialDir}/report-card.md
 """
+
+console.log '   (run with --promote <id> to back up and promote a trial\'s journal → personal-email/db/)'
