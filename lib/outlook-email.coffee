@@ -3,7 +3,7 @@ import { readFile } from 'fs/promises'
 import { resolve } from 'path'
 import { _G } from './globals.coffee'
 
-CONFIG_PATH = resolve(process.cwd(), 'config.yaml')
+CONFIG_PATH = resolve(process.cwd(), 'personal-email/config.yaml')
 
 parseOutlookEmailYaml = (yamlText) ->
   try

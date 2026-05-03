@@ -12,6 +12,14 @@ for just the cost of electricity to my GPU.
 | [personal-email](./personal-email/) | Interactive Gmail triage agent that pulls unread mail, summarizes it, recommends actions, executes email mutations, recalls memo context, and applies formattng preferences. |
 | [trial-runner](./trial-runner/) | Self-improving test harness that evaluates any agl-agent against archived training entities, scores recommendations against operator-validated ground truth, and uses a coach LLM to backpropagate revised rationale across generations. |
 
+## Operator UIs
+
+Browser-based heads-up displays for human operators to monitor, triage, and orchestrate the agents above.
+
+| UI | Purpose |
+| --- | --- |
+| [email-trainer](./email-trainer/) | Triage HUD for the personal-email pipeline. Displays live entity cards, exposes quick-action buttons and hotkeys for gated human inputs (instruction, rationale, approval), and streams real-time state changes over WebSocket as the agent processes emails in bulk. |
+
 ## Repository Layout
 
 - [personal-email/](./personal-email/) contains the current agent implementation, its microagents, and its local data.

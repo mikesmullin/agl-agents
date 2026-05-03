@@ -27,3 +27,38 @@ perception:
     merge: "merge\n"
     refresh: "refresh\n"
     reload: "reload\n"
+
+# Optional folder purpose annotations for gmail labels discovered from google-email.
+# Live Gmail labels remain the source of truth; this file adds human-meaningful descriptions.
+#
+# Example:
+# google_email:
+#   labels:
+#     "Jazzercise": this is for anything to do with my workout routine
+
+google_email:
+  labels:
+    "Archive": (default) for everything else
+    "eCommerce": wholesaling, dropshipping, (WorldWide Brands, Inc.)
+    "Expenses": receipts, financial transactions, orders, invoices
+    "Important Information": don't put anything here unless I specifically tell you to
+    "Income": paycheck cashed, tenant payments, direct deposit
+    "Job Applications": automated replies from Application Tracking Systems (ATS). (ie. "Application Received", "Thank you for your interest", etc.)    
+    "Job Interviews": follow-up replies from companies/recruiters where I've applied for employment. (ie. "Interview request/availability", "Interview confirmation", "Next steps w/ {{company}}", etc.)
+    "Job/Ancestry": ((Ancestry, Inc.) or (ancestry.com)) (a previous employer of mine). Some communications are Address to me as an employee (those go here), while others are addressed to me as a user of their product (those do not go here).
+    "Job/Blizzard": ((Blizzard Entertainment) or (blizzard.com, battle.net)). (a previous employer of mine.) Some communications are Address to me as an employee (those go here), while others are addressed to me as a user of their products (games, Battle.net) (those do not go here).
+    "Job/CrowdStrike": ((CrowdStrike, Inc.) or (crowdstrike.com)) (a previous employer of mine). Some communications are Address to me as an employee (those go here), while others are addressed to me as a user of their product line (those do not go here).
+    "Job/HSA": my health savings account.
+    "Kids": emails addressed to my kids (landon@mikesmullin.com, bella@mikesmullin.com)
+    "Mortgage": (deprecated) mortgage rates, loan officer, real estate closed deals (title company, land trust)
+    "Moving": (deprecated) communications related to moving from Eagle Mountain -> South Jordan (circa 2012)
+    "Myself": emails i send to myself from work (ie. from msmullin@blizzard.com)
+    "Newsletters": periodical-style emails that i value but don't have time to read right now
+    "Opportunities": job invitations, recruiters reaching out to me. not for routine LinkedIn reports, only for individualized/personalized emails giving me specific 1:1 attention or carrying a message from a single individual addressing me by name
+    "Processed": (deprecated) a backup place where I archive emails after they've been handled automatically 
+    "Real Estate Investment": specifically for creative deals (short-sale, foreclosure, wholesale assignment, land) (residential or commercial). not for routine home/rental adverts/listings.
+    "Statements": (credit card, bank, mortgage) statements
+    "Stock": brokerages (Robinhood, Charles Schwab, etc.), (stock, crypto) trade confirmations, etc.
+    "Taxes": Utah State, Federal Gov, IRS, TurboTax, H&R Block, tax filings, tax returns, etc.
+    "tmp/re_acquisition": (deprecated) real estate investment communications
+    "Travel": vacation plans, travel receipts, (e.g,. Delta) airlines, (e.g., Disney) resorts, passports, rental cars, taxi services, hotels, ticket purchases, reservations, etc.

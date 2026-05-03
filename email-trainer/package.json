@@ -1,0 +1,11 @@
+{
+  "name": "email-trainer",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "bun server.coffee"
+  },
+  "dependencies": {
+    "bun-coffeescript": "^1.0.3"
+  }
+}

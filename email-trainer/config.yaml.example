@@ -1,0 +1,3 @@
+port: 4000
+entities_dir: ../personal-email/db/entities
+poll_interval_ms: 3000
