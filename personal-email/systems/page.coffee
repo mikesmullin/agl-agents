@@ -23,7 +23,7 @@ export pageSystem = (since) ->
   # New emails written to local cache this pull
   for item in (pullData.results or [])
     { shortId, status, transitions } = item
-    if status is 'written'
+    if status in ['written', 'skipped']
       unless _G.World.Entity__find((e) -> e.id is shortId).length
         _G.log 'page.entity.new', { id: shortId }
         await _G.Entity.load shortId
