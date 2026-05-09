@@ -193,7 +193,7 @@ export pullBatch = _G.pullBatchLib = (spawn, { limit = null, since = '14 days ag
   _G.traceStep(traceEmoji, traceLabel, ->
     if typeof log is 'function'
       log('loop.pull.begin', { since, limit })
-    args = ['pull', '--since', since, '--yaml']
+    args = ['pull', '--since', since, '--all', '--yaml']
     args.push '--limit', String(limit) if limit?
     result = await spawn(
       'google-email',
