@@ -19,8 +19,8 @@
   <!-- canvas-confetti (loaded before Alpine so triggerConfetti() is available) -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
 
-  <!-- Lucide icons -->
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <!-- Phosphor Icons -->
+  <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/bold/style.css">
 
   <!-- App logic (must be before Alpine) -->
   <script src="/js/app.js"></script>
@@ -32,7 +32,7 @@
   <link rel="stylesheet" href="/css/styles.css">
 </head>
 
-<body class="bg-gray-950 text-gray-100" x-data="app()" x-init="init()" style="height: 100vh; overflow: hidden;">
+<body class="bg-gray-950 text-gray-100" x-data="app()" style="height: 100vh; overflow: hidden;">
 
   <!-- =========================================================================
      Layout: sidebar + main
@@ -68,8 +68,18 @@
       <!-- Stage filters -->
       <nav class="flex-1 sidebar-scroll overflow-y-auto p-2 space-y-0.5">
 
+        <!-- Section header row with expand toggle -->
+        <div class="flex items-center justify-between px-1 pb-1">
+          <span class="text-xs text-gray-600 uppercase tracking-widest">Stages</span>
+          <button @click="clickEyeToggle()" :title="showAllStages ? 'Show active stages only' : 'Show all stages'"
+            class="p-1 rounded text-gray-600 hover:text-gray-300 hover:bg-gray-800 transition-colors">
+            <i x-show="!showAllStages" class="ph-bold ph-eye text-sm" aria-hidden="true"></i>
+            <i x-show="showAllStages" class="ph-bold ph-eye-slash text-sm" aria-hidden="true"></i>
+          </button>
+        </div>
+
         <!-- All / unfiltered -->
-        <button @click="filter = null; focusedIdx = 0"
+        <button @click="filter = null; focusedId = null"
           class="w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors hover:bg-gray-800"
           :class="{ 'bg-gray-800': filter === null }">
           <span class="sidebar-label text-sm font-medium text-gray-300">All Emails</span>
@@ -77,12 +87,11 @@
         </button>
 
         <!-- Per-stage filters -->
-        <template x-for="stage in stages" :key="stage.id">
-          <button @click="filter = (filter === stage.id ? null : stage.id); focusedIdx = 0"
+        <template x-for="stage in visibleStages" :key="stage.id">
+          <button @click="clickStageFilter(stage.id)"
             class="w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors hover:bg-gray-800"
             :class="{ 'bg-gray-800/80 ring-1 ring-inset': filter === stage.id }"
-            :style="filter === stage.id ? `--tw-ring-color: ${stageColor(stage.id)}40` : ''"
-            x-show="stageCounts[stage.id] > 0 || filter === stage.id">
+            :style="{ '--tw-ring-color': filter === stage.id ? `${stageColor(stage.id)}40` : null }">
             <span class="flex items-center gap-1.5 min-w-0">
               <span x-text="stage.emoji" class="text-sm flex-shrink-0"></span>
               <span class="sidebar-label text-sm text-gray-300 truncate" x-text="stage.label"></span>
@@ -117,7 +126,8 @@
           <div><kbd class="bg-gray-800 px-1 rounded text-gray-500">j</kbd>/<kbd
               class="bg-gray-800 px-1 rounded text-gray-500">k</kbd> navigate</div>
           <div><kbd class="bg-gray-800 px-1 rounded text-gray-500">p</kbd> proceed &nbsp; <kbd
-              class="bg-gray-800 px-1 rounded text-gray-500">s</kbd> skip</div>
+              class="bg-gray-800 px-1 rounded text-gray-500">s</kbd> skip &nbsp; <kbd
+              class="bg-gray-800 px-1 rounded text-gray-500">d</kbd> delete</div>
           <div><kbd class="bg-gray-800 px-1 rounded text-gray-500">a</kbd> approve &nbsp; <kbd
               class="bg-gray-800 px-1 rounded text-gray-500">f</kbd> filter</div>
           <div><kbd class="bg-gray-800 px-1 rounded text-gray-500">Esc</kbd> clear filter</div>
@@ -152,7 +162,7 @@
 
         <!-- Legend: human gates -->
         <div class="flex items-center gap-3 text-xs text-gray-600">
-          <span>👤 = human gate</span>
+          <span>👤 human operator</span>
         </div>
       </div>
 
@@ -165,11 +175,11 @@
             <div class="text-center py-28 select-none">
               <div class="text-7xl mb-4">🎉</div>
               <h2 class="text-2xl font-bold text-gray-200">
-                <template x-if="!filter">You've reached the end!</template>
-                <template x-if="filter">Nothing in this stage</template>
+                <template x-if="!filter"><span>You've reached the end!</span></template>
+                <template x-if="filter"><span>Nothing in this stage</span></template>
               </h2>
               <p class="text-gray-500 mt-2">
-                <template x-if="!filter">No emails waiting for triage. Great work! 🌟</template>
+                <template x-if="!filter"><span>No emails waiting for triage. Great work! 🌟</span></template>
                 <template x-if="filter">
                   <span>
                     No emails in
@@ -200,283 +210,323 @@
           <template x-for="(entity, idx) in filteredEntities" :key="entity.id">
             <article data-entity-card :data-entity-id="entity.id"
               class="entity-card rounded-xl border bg-gray-900 overflow-hidden" :class="{
-              'border-yellow-500/50 card-gate-input': getStage(entity).id === 'awaiting_input',
-              'border-blue-500/50':                   getStage(entity).id === 'awaiting_approval',
-              'border-gray-700/80':                   !['awaiting_input','awaiting_approval'].includes(getStage(entity).id),
+              'border-yellow-500/50 card-gate-input': getStage(entity).id === 'awaiting_input'    && focusedIdx !== idx && !tombstones[entity.id],
+              'border-blue-500/50':                   getStage(entity).id === 'awaiting_approval' && focusedIdx !== idx && !tombstones[entity.id],
+              'border-gray-700/80':                   !['awaiting_input','awaiting_approval'].includes(getStage(entity).id) && focusedIdx !== idx && !tombstones[entity.id],
+              'border-gray-800/30 opacity-20 cursor-default': tombstones[entity.id],
               'entity-exiting':                       entity._deleting,
-              'ring-2 ring-indigo-500/50':            focusedIdx === idx,
-            }" @click="focusedIdx = idx">
+              'border-indigo-400 ring-2 ring-indigo-400/40 shadow-lg shadow-indigo-900/30': focusedIdx === idx && !tombstones[entity.id],
+            }" @click="if (!tombstones[entity.id]) focusedId = entity.id"
+              x-effect="if (focusedIdx === idx && !tombstones[entity.id]) $nextTick(() => $el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }))">
 
-              <!-- ============================================================
-                 Card header: envelope info
-                 ============================================================ -->
-              <div class="px-4 pt-4 pb-3 border-b border-gray-800/60">
-                <div class="flex items-start justify-between gap-3">
-                  <!-- From + Subject -->
-                  <div class="min-w-0 flex-1">
-                    <div class="text-xs text-gray-500 truncate" x-text="entity.envelope?.from || '—'"></div>
-                    <h2 class="text-sm font-semibold text-white mt-0.5 leading-snug"
-                      x-text="entity.envelope?.subject || entity.id"></h2>
-                  </div>
-                  <!-- Date + Stage badge -->
-                  <div class="flex-shrink-0 flex flex-col items-end gap-1.5">
-                    <span class="text-xs text-gray-600 whitespace-nowrap"
-                      x-text="formatDate(entity.envelope?.date)"></span>
-                    <span class="px-2 py-0.5 rounded-full text-xs font-semibold text-black/80 whitespace-nowrap"
-                      :style="`background-color: ${stageColor(getStage(entity).id)}`"
-                      x-text="getStage(entity).emoji + ' ' + getStage(entity).label"></span>
+              <!-- Inner content hidden for tombstones; article min-height preserves the slot -->
+              <div x-show="!tombstones[entity.id]">
+                <div class="px-4 pt-4 pb-3 border-b border-gray-800/60">
+                  <div class="flex items-start justify-between gap-3">
+                    <!-- From + Subject -->
+                    <div class="min-w-0 flex-1">
+                      <div class="text-xs text-gray-500 truncate" x-text="entity.envelope?.from || '—'"></div>
+                      <h2 class="text-sm font-semibold text-white mt-0.5 leading-snug"
+                        x-text="entity.envelope?.subject || entity.id"></h2>
+                    </div>
+                    <!-- Date + Stage badge -->
+                    <div class="flex-shrink-0 flex flex-col items-end gap-1.5">
+                      <span class="text-xs text-gray-600 whitespace-nowrap"
+                        x-text="formatDate(entity.envelope?.date)"></span>
+                      <span class="px-2 py-0.5 rounded-full text-xs font-semibold text-black/80 whitespace-nowrap"
+                        :style="`background-color: ${stageColor(getStage(entity).id)}`"
+                        x-text="getStage(entity).emoji + ' ' + getStage(entity).label"></span>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <!-- ============================================================
+                <!-- ============================================================
                  Stage-specific body
                  ============================================================ -->
 
-              <!-- ---- AWAITING INPUT ---- -->
-              <template x-if="getStage(entity).id === 'awaiting_input'">
-                <div>
+                <!-- ---- AWAITING INPUT ---- -->
+                <template x-if="getStage(entity).id === 'awaiting_input'">
+                  <div>
 
-                  <!-- Summary + Recommendation -->
-                  <div class="px-4 py-3 border-b border-gray-800/40">
-                    <p class="text-sm font-semibold text-white" x-text="entity.summary?.headline || ''"></p>
-                    <p class="text-xs text-gray-400 mt-1 line-clamp-3"
-                      x-text="entity.summary?.description || entity.summary?.text?.replace(/^.*\n+/, '').trim() || ''">
-                    </p>
-                    <!-- Recommendation chip -->
-                    <div class="flex items-center flex-wrap gap-2 mt-2">
-                      <span
-                        class="px-2 py-0.5 bg-green-900/40 border border-green-700/40 text-green-300 rounded text-xs font-medium"
-                        x-text="entity.recommendation?.operations || ''"></span>
-                      <span class="text-xs text-gray-500"
-                        x-text="`${entity.recommendation?.confidence || '?'}% confidence`"></span>
-                      <span x-show="entity.recommendation?.ref" class="text-xs text-gray-600"
-                        x-text="entity.recommendation?.ref || ''"></span>
+                    <!-- Summary + Recommendation -->
+                    <div class="px-4 py-3 border-b border-gray-800/40">
+                      <p class="text-sm font-semibold text-white" x-text="entity.summary?.headline || ''"></p>
+                      <p class="text-xs text-gray-400 mt-1 line-clamp-3"
+                        x-text="entity.summary?.description || entity.summary?.text?.replace(/^.*\n+/, '').trim() || ''">
+                      </p>
+                      <!-- Recommendation chip -->
+                      <div class="flex items-center flex-wrap gap-2 mt-2">
+                        <span
+                          class="px-2 py-0.5 bg-green-900/40 border border-green-700/40 text-green-300 rounded text-xs font-medium"
+                          x-text="entity.recommendation?.operations || ''"></span>
+                        <span class="text-xs text-gray-500"
+                          x-text="`${entity.recommendation?.confidence || '?'}% confidence`"></span>
+                        <span x-show="entity.recommendation?.ref" class="text-xs text-gray-600"
+                          x-text="entity.recommendation?.ref || ''"></span>
+                      </div>
+                    </div>
+
+                    <!-- Triage form -->
+                    <div class="px-4 py-3" x-data="{}">
+
+                      <!-- Submitted feedback -->
+                      <template x-if="getForm(entity.id).submitted">
+                        <div class="submitted-success text-center py-5 text-green-400 text-sm font-medium">
+                          ✅ Submitted! Waiting for agent to pick up…
+                        </div>
+                      </template>
+
+                      <template x-if="!getForm(entity.id).submitted">
+                        <div>
+
+                          <!-- Quick-action button row -->
+                          <div class="flex flex-wrap gap-2 mb-3">
+                            <button @click.stop="quickAction(entity.id, 'proceed')"
+                              class="btn-proceed flex items-center gap-1 px-3 py-1.5 text-xs font-bold"
+                              title="Keyboard: p">✅ Proceed</button>
+
+                            <button @click.stop="quickAction(entity.id, 'skip')"
+                              class="btn-secondary flex items-center gap-1 px-3 py-1.5 text-xs" title="Keyboard: s">⏭️
+                              Skip</button>
+
+                            <button @click.stop="quickAction(entity.id, 'archive')"
+                              class="btn-secondary flex items-center gap-1 px-3 py-1.5 text-xs">📦 Archive</button>
+
+                            <button @click.stop="quickAction(entity.id, 'delete')"
+                              class="btn-danger flex items-center gap-1 px-3 py-1.5 text-xs">🗑️ Delete</button>
+
+                            <button
+                              @click.stop="getForm(entity.id).showMove = !getForm(entity.id).showMove; getForm(entity.id).showNotice = false"
+                              class="btn-secondary flex items-center gap-1 px-3 py-1.5 text-xs"
+                              :class="{ 'bg-indigo-900/60 border-indigo-600/60 text-indigo-300': getForm(entity.id).showMove }">📁
+                              Move…</button>
+
+                            <button
+                              @click.stop="getForm(entity.id).showNotice = !getForm(entity.id).showNotice; getForm(entity.id).showMove = false"
+                              class="btn-secondary flex items-center gap-1 px-3 py-1.5 text-xs"
+                              :class="{ 'bg-indigo-900/60 border-indigo-600/60 text-indigo-300': getForm(entity.id).showNotice }">📢
+                              Notice</button>
+                          </div>
+
+                          <!-- Move destination -->
+                          <div x-show="getForm(entity.id).showMove" x-transition class="mb-3">
+                            <div class="flex gap-2">
+                              <select x-model="getForm(entity.id).destination" @click.stop class="form-input flex-1">
+                                <option value="">Choose folder…</option>
+                                <template x-for="dest in destinations" :key="dest">
+                                  <option :value="dest" x-text="dest"></option>
+                                </template>
+                              </select>
+                              <button @click.stop="moveAction(entity.id)" :disabled="!getForm(entity.id).destination"
+                                class="btn-proceed px-3 py-1.5 text-xs disabled:opacity-40">Move</button>
+                            </div>
+                          </div>
+
+                          <!-- Notice fields (initially hidden) -->
+                          <div x-show="getForm(entity.id).showNotice" x-transition
+                            class="mb-3 space-y-2 p-3 bg-gray-800/40 rounded-lg border border-gray-700/40">
+                            <p class="text-xs text-gray-500 font-medium">📢 Notice — out-of-band operator digest</p>
+                            <div>
+                              <label class="text-xs text-gray-400 block mb-1">
+                                <code class="text-indigo-400">notice_capture</code>
+                                <span class="text-gray-600 ml-1">— what to capture from this email</span>
+                              </label>
+                              <input type="text" x-model="getForm(entity.id).notice_capture" @click.stop
+                                placeholder="e.g. bill due date, amount owed…" class="form-input w-full">
+                            </div>
+                            <div>
+                              <label class="text-xs text-gray-400 block mb-1">
+                                <code class="text-indigo-400">notice_display</code>
+                                <span class="text-gray-600 ml-1">— how to present it in the toaster</span>
+                              </label>
+                              <input type="text" x-model="getForm(entity.id).notice_display" @click.stop
+                                placeholder="e.g. 'Chase bill due {date} — min payment {amount}'"
+                                class="form-input w-full">
+                            </div>
+                          </div>
+
+                          <!-- Instruction input -->
+                          <div class="mb-2">
+                            <label class="text-xs text-gray-500 block mb-1">
+                              Instruction
+                              <span class="text-gray-700 ml-1">— proceed · skip · delete · custom Gmail command</span>
+                            </label>
+                            <input type="text" x-model="getForm(entity.id).instruction" @click.stop
+                              @keydown.enter.prevent="submitTriage(entity.id)"
+                              @keydown.escape.prevent="quickAction(entity.id, 'skip')"
+                              placeholder="proceed, skip, or custom instruction…" class="form-input w-full">
+                          </div>
+
+                          <!-- Rationale input -->
+                          <div class="mb-3">
+                            <label class="text-xs text-gray-500 block mb-1">
+                              Rationale
+                              <span class="text-gray-700 ml-1">— optional · seeds training signal</span>
+                            </label>
+                            <input type="text" x-model="getForm(entity.id).rationale" @click.stop
+                              @keydown.enter.prevent="submitTriage(entity.id)" placeholder="Why? (1–2 sentences)"
+                              :data-rationale-for="entity.id" class="form-input w-full">
+                          </div>
+
+                          <!-- Submit button -->
+                          <button @click.stop="submitTriage(entity.id)"
+                            :disabled="!getForm(entity.id).instruction || getForm(entity.id).submitting"
+                            class="btn-proceed w-full py-2 text-sm">
+                            <span x-text="getForm(entity.id).submitting ? '⏳ Submitting…' : '▶ Submit'"></span>
+                          </button>
+
+                          <!-- Validation / error message -->
+                          <div x-show="getForm(entity.id).error" class="mt-2 text-red-400 text-xs form-error-shake"
+                            x-text="getForm(entity.id).error"></div>
+
+                        </div>
+                      </template>
+
                     </div>
                   </div>
+                </template>
 
-                  <!-- Triage form -->
-                  <div class="px-4 py-3" x-data="{}">
-
-                    <!-- Submitted feedback -->
-                    <template x-if="getForm(entity.id).submitted">
-                      <div class="submitted-success text-center py-5 text-green-400 text-sm font-medium">
-                        ✅ Submitted! Waiting for agent to pick up…
+                <!-- ---- AWAITING APPROVAL ---- -->
+                <template x-if="getStage(entity).id === 'awaiting_approval'">
+                  <div>
+                    <!-- Summary strip -->
+                    <div class="px-4 py-3 border-b border-gray-800/40">
+                      <p class="text-sm font-semibold text-white" x-text="entity.summary?.headline || ''"></p>
+                      <div class="flex items-center gap-2 mt-1 flex-wrap">
+                        <span class="px-2 py-0.5 bg-blue-900/40 border border-blue-700/40 text-blue-300 rounded text-xs"
+                          x-text="entity.recommendation?.operations || ''"></span>
+                        <span class="text-xs text-gray-500"
+                          x-text="`${entity.recommendation?.confidence || '?'}% confidence`"></span>
                       </div>
-                    </template>
+                    </div>
 
-                    <template x-if="!getForm(entity.id).submitted">
-                      <div>
+                    <!-- Plan text (hidden once approved) -->
+                    <div x-show="!getForm(entity.id).approving" class="px-4 py-3 border-b border-gray-800/40">
+                      <p class="text-xs text-gray-500 font-medium mb-2">📋 Pending Mutation Plan</p>
+                      <pre class="plan-text" x-text="stripAnsi(entity.plan?.text || '')"></pre>
+                    </div>
 
-                        <!-- Quick-action button row -->
-                        <div class="flex flex-wrap gap-2 mb-3">
-                          <button @click.stop="quickAction(entity.id, 'proceed')"
-                            class="btn-proceed flex items-center gap-1 px-3 py-1.5 text-xs font-bold"
-                            title="Keyboard: p">✅ Proceed</button>
-
-                          <button @click.stop="quickAction(entity.id, 'skip')"
-                            class="btn-secondary flex items-center gap-1 px-3 py-1.5 text-xs" title="Keyboard: s">⏭️
-                            Skip</button>
-
-                          <button @click.stop="quickAction(entity.id, 'archive')"
-                            class="btn-secondary flex items-center gap-1 px-3 py-1.5 text-xs">📦 Archive</button>
-
-                          <button @click.stop="quickAction(entity.id, 'delete')"
-                            class="btn-danger flex items-center gap-1 px-3 py-1.5 text-xs">🗑️ Delete</button>
-
-                          <button
-                            @click.stop="getForm(entity.id).showMove = !getForm(entity.id).showMove; getForm(entity.id).showNotice = false"
-                            class="btn-secondary flex items-center gap-1 px-3 py-1.5 text-xs"
-                            :class="{ 'bg-indigo-900/60 border-indigo-600/60 text-indigo-300': getForm(entity.id).showMove }">📁
-                            Move…</button>
-
-                          <button
-                            @click.stop="getForm(entity.id).showNotice = !getForm(entity.id).showNotice; getForm(entity.id).showMove = false"
-                            class="btn-secondary flex items-center gap-1 px-3 py-1.5 text-xs"
-                            :class="{ 'bg-indigo-900/60 border-indigo-600/60 text-indigo-300': getForm(entity.id).showNotice }">📢
-                            Notice</button>
+                    <!-- Approve / Reject -->
+                    <div class="px-4 py-3 flex gap-3">
+                      <template x-if="getForm(entity.id).approving">
+                        <div class="flex items-center gap-2 text-sm text-blue-400 py-1">
+                          <div class="spinner" style="border-top-color: #60a5fa; border-color: #1e3a5f;"></div>
+                          <span>Waiting for backend to begin applying…</span>
                         </div>
-
-                        <!-- Move destination -->
-                        <div x-show="getForm(entity.id).showMove" x-transition class="mb-3">
-                          <div class="flex gap-2">
-                            <select x-model="getForm(entity.id).destination" @click.stop class="form-input flex-1">
-                              <option value="">Choose folder…</option>
-                              <template x-for="dest in destinations" :key="dest">
-                                <option :value="dest" x-text="dest"></option>
-                              </template>
-                            </select>
-                            <button @click.stop="moveAction(entity.id)" :disabled="!getForm(entity.id).destination"
-                              class="btn-proceed px-3 py-1.5 text-xs disabled:opacity-40">Move</button>
-                          </div>
+                      </template>
+                      <template x-if="!getForm(entity.id).approving">
+                        <div class="flex gap-3 w-full">
+                          <button @click.stop="approveEntity(entity.id)"
+                            class="btn-proceed flex-1 py-2.5 text-sm font-bold" title="Keyboard: a">✅ Approve &amp;
+                            Apply</button>
+                          <button @click.stop="rejectEntity(entity.id)" class="btn-secondary flex-1 py-2.5 text-sm">↩️
+                            Reject
+                            / Re-process</button>
                         </div>
-
-                        <!-- Notice fields (initially hidden) -->
-                        <div x-show="getForm(entity.id).showNotice" x-transition
-                          class="mb-3 space-y-2 p-3 bg-gray-800/40 rounded-lg border border-gray-700/40">
-                          <p class="text-xs text-gray-500 font-medium">📢 Notice — out-of-band operator digest</p>
-                          <div>
-                            <label class="text-xs text-gray-400 block mb-1">
-                              <code class="text-indigo-400">notice_capture</code>
-                              <span class="text-gray-600 ml-1">— what to capture from this email</span>
-                            </label>
-                            <input type="text" x-model="getForm(entity.id).notice_capture" @click.stop
-                              placeholder="e.g. bill due date, amount owed…" class="form-input w-full">
-                          </div>
-                          <div>
-                            <label class="text-xs text-gray-400 block mb-1">
-                              <code class="text-indigo-400">notice_display</code>
-                              <span class="text-gray-600 ml-1">— how to present it in the toaster</span>
-                            </label>
-                            <input type="text" x-model="getForm(entity.id).notice_display" @click.stop
-                              placeholder="e.g. 'Chase bill due {date} — min payment {amount}'"
-                              class="form-input w-full">
-                          </div>
-                        </div>
-
-                        <!-- Instruction input -->
-                        <div class="mb-2">
-                          <label class="text-xs text-gray-500 block mb-1">
-                            Instruction
-                            <span class="text-gray-700 ml-1">— proceed · skip · delete · custom Gmail command</span>
-                          </label>
-                          <input type="text" x-model="getForm(entity.id).instruction" @click.stop
-                            @keydown.enter.prevent="submitTriage(entity.id)"
-                            @keydown.escape.prevent="quickAction(entity.id, 'skip')"
-                            placeholder="proceed, skip, or custom instruction…" class="form-input w-full">
-                        </div>
-
-                        <!-- Rationale input -->
-                        <div class="mb-3">
-                          <label class="text-xs text-gray-500 block mb-1">
-                            Rationale
-                            <span class="text-gray-700 ml-1">— optional · seeds training signal</span>
-                          </label>
-                          <input type="text" x-model="getForm(entity.id).rationale" @click.stop
-                            @keydown.enter.prevent="submitTriage(entity.id)" placeholder="Why? (1–2 sentences)"
-                            class="form-input w-full">
-                        </div>
-
-                        <!-- Submit button -->
-                        <button @click.stop="submitTriage(entity.id)"
-                          :disabled="!getForm(entity.id).instruction || getForm(entity.id).submitting"
-                          class="btn-proceed w-full py-2 text-sm">
-                          <span x-text="getForm(entity.id).submitting ? '⏳ Submitting…' : '▶ Submit'"></span>
-                        </button>
-
-                        <!-- Validation / error message -->
-                        <div x-show="getForm(entity.id).error" class="mt-2 text-red-400 text-xs form-error-shake"
-                          x-text="getForm(entity.id).error"></div>
-
-                      </div>
-                    </template>
-
-                  </div>
-                </div>
-              </template>
-
-              <!-- ---- AWAITING APPROVAL ---- -->
-              <template x-if="getStage(entity).id === 'awaiting_approval'">
-                <div>
-                  <!-- Summary strip -->
-                  <div class="px-4 py-3 border-b border-gray-800/40">
-                    <p class="text-sm font-semibold text-white" x-text="entity.summary?.headline || ''"></p>
-                    <div class="flex items-center gap-2 mt-1 flex-wrap">
-                      <span class="px-2 py-0.5 bg-blue-900/40 border border-blue-700/40 text-blue-300 rounded text-xs"
-                        x-text="entity.recommendation?.operations || ''"></span>
-                      <span class="text-xs text-gray-500"
-                        x-text="`${entity.recommendation?.confidence || '?'}% confidence`"></span>
+                      </template>
                     </div>
                   </div>
+                </template>
 
-                  <!-- Plan text -->
-                  <div class="px-4 py-3 border-b border-gray-800/40">
-                    <p class="text-xs text-gray-500 font-medium mb-2">📋 Pending Mutation Plan</p>
-                    <pre class="plan-text" x-text="stripAnsi(entity.plan?.text || '')"></pre>
+                <!-- ---- SKIPPED ---- -->
+                <template x-if="getStage(entity).id === 'skipped'">
+                  <div>
+                    <div class="px-4 py-3 border-b border-gray-800/40">
+                      <p class="text-sm font-semibold text-white" x-text="entity.summary?.headline || ''"></p>
+                      <p class="text-xs text-gray-500 mt-1 line-clamp-2"
+                        x-text="entity.summary?.description || entity.summary?.text?.replace(/^.*\n+/, '').trim() || ''">
+                      </p>
+                    </div>
+                    <div class="px-4 py-3 space-y-3">
+                      <p class="text-sm text-gray-500 text-center">This email was marked to skip.</p>
+                      <button @click.stop="unskipEntity(entity.id)" class="btn-secondary w-full py-2 text-sm">↩️
+                        Re-process</button>
+                    </div>
                   </div>
+                </template>
 
-                  <!-- Approve / Reject -->
-                  <div class="px-4 py-3 flex gap-3">
-                    <button @click.stop="approveEntity(entity.id)" class="btn-proceed flex-1 py-2.5 text-sm font-bold"
-                      title="Keyboard: a">✅ Approve &amp; Apply</button>
-                    <button @click.stop="rejectEntity(entity.id)" class="btn-secondary flex-1 py-2.5 text-sm">↩️ Reject
-                      / Re-process</button>
+                <!-- ---- PROCESSING / EXECUTING ---- -->
+                <template x-if="getStage(entity).id === 'processing'">
+                  <div class="px-4 py-3">
+                    <div class="flex items-center gap-2 text-sm text-gray-400">
+                      <div class="spinner"></div>
+                      <span>Agent is processing…</span>
+                    </div>
+                    <div x-show="entity.operator?.command" class="mt-1.5 text-xs text-gray-600">
+                      Command: <code class="text-gray-500" x-text="entity.operator?.command"></code>
+                    </div>
+                    <div x-show="entity.execution?.summary" class="mt-1 text-xs text-gray-500 line-clamp-2"
+                      x-text="entity.execution?.summary"></div>
                   </div>
-                </div>
-              </template>
+                </template>
 
-              <!-- ---- PROCESSING / EXECUTING ---- -->
-              <template x-if="getStage(entity).id === 'processing'">
-                <div class="px-4 py-3">
-                  <div class="flex items-center gap-2 text-sm text-gray-400">
-                    <div class="spinner"></div>
-                    <span>Agent is processing…</span>
+                <!-- ---- APPLYING ---- -->
+                <template x-if="getStage(entity).id === 'applying'">
+                  <div class="px-4 py-3">
+                    <div class="flex items-center gap-2 text-sm text-blue-400">
+                      <div class="spinner" style="border-top-color: #60a5fa; border-color: #1e3a5f;"></div>
+                      <span>Applying mutations to Gmail…</span>
+                    </div>
                   </div>
-                  <div x-show="entity.operator?.command" class="mt-1.5 text-xs text-gray-600">
-                    Command: <code class="text-gray-500" x-text="entity.operator?.command"></code>
-                  </div>
-                  <div x-show="entity.execution?.summary" class="mt-1 text-xs text-gray-500 line-clamp-2"
-                    x-text="entity.execution?.summary"></div>
-                </div>
-              </template>
+                </template>
 
-              <!-- ---- APPLYING ---- -->
-              <template x-if="getStage(entity).id === 'applying'">
-                <div class="px-4 py-3">
-                  <div class="flex items-center gap-2 text-sm text-blue-400">
-                    <div class="spinner" style="border-top-color: #60a5fa; border-color: #1e3a5f;"></div>
-                    <span>Applying mutations to Gmail…</span>
+                <!-- ---- DONE ---- -->
+                <template x-if="getStage(entity).id === 'done'">
+                  <div class="px-4 py-3">
+                    <div class="flex items-center gap-2 text-sm text-green-400">
+                      <span>✅ Applied</span>
+                      <span class="text-gray-600 text-xs" x-text="formatDate(entity.apply?.applied_at)"></span>
+                    </div>
+                    <div x-show="entity.journal?.action_taken" class="mt-1 text-xs text-gray-500"
+                      x-text="entity.journal?.action_taken"></div>
                   </div>
-                </div>
-              </template>
+                </template>
 
-              <!-- ---- DONE ---- -->
-              <template x-if="getStage(entity).id === 'done'">
-                <div class="px-4 py-3">
-                  <div class="flex items-center gap-2 text-sm text-green-400">
-                    <span>✅ Applied</span>
-                    <span class="text-gray-600 text-xs" x-text="formatDate(entity.apply?.applied_at)"></span>
+                <!-- ---- OTHER STAGES (new / loading / analyzing / recommended) ---- -->
+                <template
+                  x-if="!['awaiting_input','awaiting_approval','processing','applying','done','skipped'].includes(getStage(entity).id)">
+                  <div class="px-4 py-3">
+                    <div class="flex items-center gap-2 text-xs text-gray-500">
+                      <div class="w-2 h-2 rounded-full ws-dot-pulse"
+                        :style="`background-color: ${stageColor(getStage(entity).id)}`"></div>
+                      <span>Pipeline running…</span>
+                    </div>
                   </div>
-                  <div x-show="entity.journal?.action_taken" class="mt-1 text-xs text-gray-500"
-                    x-text="entity.journal?.action_taken"></div>
-                </div>
-              </template>
+                </template>
 
-              <!-- ---- OTHER STAGES (new / loading / analyzing / recommended) ---- -->
-              <template
-                x-if="!['awaiting_input','awaiting_approval','processing','applying','done'].includes(getStage(entity).id)">
-                <div class="px-4 py-3">
-                  <div class="flex items-center gap-2 text-xs text-gray-500">
-                    <div class="w-2 h-2 rounded-full ws-dot-pulse"
-                      :style="`background-color: ${stageColor(getStage(entity).id)}`"></div>
-                    <span>Pipeline running…</span>
-                  </div>
-                </div>
-              </template>
-
-              <!-- ============================================================
+                <!-- ============================================================
                  Expandable detail row
                  ============================================================ -->
-              <div class="border-t border-gray-800/40" x-data="{ open: false }">
-                <button @click.stop="open = !open"
-                  class="w-full px-4 py-2 text-xs text-gray-700 hover:text-gray-500 flex items-center justify-between transition-colors group">
-                  <span x-text="open ? '▲ Hide details' : '▾ View details'" class="group-hover:text-gray-400"></span>
-                  <code class="font-mono text-gray-800 group-hover:text-gray-600" x-text="entity.id"></code>
-                </button>
+                <div class="border-t border-gray-800/40" x-data="{ open: false, copied: false }">
+                  <button @click.stop="open = !open"
+                    class="w-full px-4 py-2 text-xs text-gray-600 hover:text-gray-400 flex items-center justify-between transition-colors group">
+                    <span x-text="open ? '▲ Hide details' : '▾ View details'" class="group-hover:text-gray-300"></span>
+                    <span
+                      @click.stop="navigator.clipboard.writeText(entity.id).then(() => { copied = true; setTimeout(() => copied = false, 1500) })"
+                      class="flex items-center gap-1 cursor-pointer hover:text-gray-300 transition-colors"
+                      :title="copied ? 'Copied!' : 'Copy ID'">
+                      <i x-show="!copied" class="ph-bold ph-clipboard text-gray-600 group-hover:text-gray-400"
+                        aria-hidden="true"></i>
+                      <i x-show="copied" class="ph-bold ph-check text-green-500" aria-hidden="true"></i>
+                      <code class="font-mono text-gray-600 group-hover:text-gray-400" x-text="entity.id"></code>
+                    </span>
+                  </button>
 
-                <div x-show="open" x-transition class="px-4 pb-4">
-                  <div class="space-y-0.5 text-xs font-mono">
-                    <template x-for="[k, v] in Object.entries(entitySummaryFields(entity))" :key="k">
-                      <div class="flex gap-2 min-w-0">
-                        <span class="text-gray-600 flex-shrink-0 w-32 text-right" x-text="k + ':'"></span>
-                        <span class="text-gray-400 truncate"
-                          :title="typeof v === 'object' ? JSON.stringify(v) : String(v ?? '')"
-                          x-text="typeof v === 'object' ? JSON.stringify(v).slice(0, 120) : String(v ?? '').slice(0, 120)"></span>
-                      </div>
-                    </template>
+                  <div x-show="open" x-transition class="px-4 pb-4">
+                    <div class="space-y-0.5 text-xs font-mono">
+                      <template x-for="[k, v] in Object.entries(entitySummaryFields(entity))" :key="k">
+                        <div class="flex gap-2 min-w-0">
+                          <span class="text-gray-600 flex-shrink-0 w-32 text-right" x-text="k + ':'"></span>
+                          <span class="text-gray-400 truncate"
+                            :title="typeof v === 'object' ? JSON.stringify(v) : String(v ?? '')"
+                            x-text="typeof v === 'object' ? JSON.stringify(v).slice(0, 120) : String(v ?? '').slice(0, 120)"></span>
+                        </div>
+                      </template>
+                    </div>
                   </div>
                 </div>
               </div>
+              <!-- /tombstone wrapper -->
 
             </article>
           </template>

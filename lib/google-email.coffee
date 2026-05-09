@@ -213,11 +213,13 @@ export loadPageIds = _G.loadPageIdsLib = (spawn, { limit = 10, traceEmoji = 'ðŸ“
     listEmailIds(list.stdout)
   )
 
-_G.planEmailTransactionLib = ->
-  await _G.spawn 'google-email', ['plan']
+_G.planEmailTransactionLib = (id) ->
+  args = if id then ['plan', id] else ['plan']
+  await _G.spawn 'google-email', args
 
-_G.applyEmailTransactionLib = ->
-  await _G.spawn 'google-email', ['apply']
+_G.applyEmailTransactionLib = (id) ->
+  args = if id then ['apply', id] else ['apply']
+  await _G.spawn 'google-email', args
 
 _G.cleanEmailTransactionLib = ->
   await _G.spawn 'google-email', ['clean']

@@ -207,11 +207,13 @@ export loadPageIds = _G.loadPageIdsLib = (spawn, { limit = 10, traceEmoji = 'ðŸ“
     listEmailIds(list.stdout)
   )
 
-_G.planEmailTransactionLib = ->
-  await _G.spawn 'outlook-email', ['plan']
+_G.planEmailTransactionLib = (id) ->
+  args = if id then ['plan', id] else ['plan']
+  await _G.spawn 'outlook-email', args
 
-_G.applyEmailTransactionLib = ->
-  await _G.spawn 'outlook-email', ['apply', '--yes']
+_G.applyEmailTransactionLib = (id) ->
+  args = if id then ['apply', '--yes', id] else ['apply', '--yes']
+  await _G.spawn 'outlook-email', args
 
 _G.cleanEmailTransactionLib = ->
   await _G.spawn 'outlook-email', ['clean']

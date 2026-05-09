@@ -86,7 +86,9 @@ export setupSystem = ->
       continue
 
     # Reward function: only train on entities where operator accepted the recommendation
-    unless entity.operator?.command is 'proceed'
+    # Support both old format (operator.command) and new format (operator_input._parsed_operation)
+    isProceed = entity.operator?.command is 'proceed' or entity.operator_input?._parsed_operation is 'proceed'
+    unless isProceed
       _G.log 'trial.setup.skip', { id: entity.id, reason: 'operator did not proceed' }
       continue
 
@@ -95,8 +97,12 @@ export setupSystem = ->
       _G.log 'trial.setup.skip', { id: entity.id, reason: 'no recommendation.operations' }
       continue
 
-    # original_rationale: human anchor — operator.rationale, falling back to agent rationale
-    originalRationale = String(entity.operator?.rationale or entity.recommendation?.rationale or '').trim()
+    # original_rationale: human anchor — prefer new format, fall back to old, then agent rationale
+    originalRationale = String(
+      entity.operator_input?.rationale or
+      entity.operator?.rationale or
+      entity.recommendation?.rationale or ''
+    ).trim()
 
     # trial_rationale: starts equal to original on gen 0; advances via backprop on gen N+1
     trialRationale = backpropByEntityId[entity.id] or originalRationale

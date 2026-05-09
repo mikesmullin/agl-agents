@@ -79,7 +79,9 @@ entityPath = (id) -> resolve ENTITIES_DIR, "#{id}.yaml"
 readEntity = (id) ->
   try
     text = readFileSync entityPath(id), 'utf8'
-    YAML.parse text
+    entity = YAML.parse text
+    entity.id = String(id) if entity  # YAML may parse leading-zero IDs (e.g. 012948) as integers
+    entity
   catch
     null
 
@@ -107,8 +109,15 @@ patchEntityFile = (id, patch) ->
   throw new Error "Entity not found: #{id}" unless existsSync path
   text = readFileSync path, 'utf8'
   entity = YAML.parse text
+  entity.id = String(id) if entity  # YAML may parse leading-zero IDs as integers
   updated = deepMerge entity, patch
-  writeFileSync path, YAML.stringify(updated), 'utf8'
+  yaml = YAML.stringify(updated)
+  yaml = yaml.replace /^(id:\s*)(\S+)$/m, (_, prefix, val) ->
+    if (val.startsWith("'") and val.endsWith("'")) or (val.startsWith('"') and val.endsWith('"'))
+      prefix + val
+    else
+      prefix + "'#{val}'"
+  writeFileSync path, yaml, 'utf8'
   updated
 
 listEntityIds = ->

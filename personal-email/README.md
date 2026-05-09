@@ -48,35 +48,26 @@ Each iteration executes all systems in sequence against all live entities in Wor
 | 5 | **summarize** — generate headline and summary | `content.body`<br>`recall.usePresentationPreferences`<br>`recall.presentationCandidate.formatting_instructions` | `summary.headline`<br>`summary.text` | `05-summarize-email` |
 | 6 | **recommend** — choose action and confidence | `content.body`<br>`recall.journalContext` | `recommendation.label`<br>`recommendation.confidence`<br>`recommendation.journal_id`<br>`recommendation.ref`<br>`recommendation.operations`<br>`recommendation.rationale`<br>`retrospective.stage_6_context` (context window snapshot for seance)<br>`retrospective.stage_6_model` | `01-recommend-action` |
 | 7 | **display** — write email card to entity log | `envelope.from`<br>`envelope.subject`<br>`envelope.date`<br>`summary.headline`<br>`summary.text`<br>`recommendation.label`<br>`recommendation.confidence`<br>`recall.usePresentationPreferences`<br>`recall.presentationCandidate.formatting_instructions` | `log[]` | — |
-| 8 | **operator** (stage 1) — open human input gate | `recommendation.label` | `operator_input.instruction: null`<br>`operator_input.operation: null`<br>`operator_input.rationale: null`<br>`operator_input.recommendation` | — |
-| 9 | **operator** (stage 2) — process instruction | ✍️ `operator_input.instruction` OR `operator_input.operation`<br>`operator_input.rationale` (optional)<br>`content.body`<br>`recommendation.label`<br>`recommendation.journal_id` | `operator.command`<br>`operator.instruction`<br>`operator.instructionOrRecommendation`<br>`operator.rationale`<br>— or on memo/question:<br>`operator_input.last_result`<br>`operator_input.last_answer`<br>`operator_input.instruction` reset to `null` | `02-contains-question`,<br>`04-answer-question-from-email`,<br>`07-execute-memo-instruction` |
-| 10 | **refresh** — clear components for re-processing | `operator.command` (`refresh` or `reload`) | clears `operator_input`<br>`fingerprint`<br>`recall`<br>`summary`<br>`recommendation`<br>`operator`<br>`execution`<br>`journal` | — |
-| 11 | **reload** — hot-reload microagents, then refresh | `operator.command` (`reload`) | reloads all microagent modules; same clears as **refresh** | — |
-| 12 | **execute** — run Gmail instruction | `operator.instruction`<br>`operator.command` | `execution.success`<br>`execution.summary`<br>`execution.instruction`<br>`log[]` | `08-execute-instruction` |
-| 13 | **journal** — persist outcome to memo database | `content.body`<br>`operator.instructionOrRecommendation`<br>`operator.command`<br>`execution.summary`<br>`recommendation.journal_id` | `journal.summary`<br>`journal.keywords`<br>`journal.action_taken`<br>`journal.factors`<br>`journal.sender_email`<br>`journal.sender_offers`<br>`journal.sender_expects`<br>`journal.reader_value`<br>`journal.match_criteria`<br>`journal.rule` | `09-build-journal-entry`,<br>`10-build-presentation-entry` |
-| 14 | **plan** — generate pending mutation plan | `journal` (presence gate) | `plan.success`<br>`plan.text`<br>`plan.planned_at`<br>`log[]` | — |
-| 15 | **apply** — approve and execute mutations | ✍️ `apply.approved: true`<br>(agent writes `null`; operator sets `true`) | `apply.success`<br>`apply.output`<br>`apply.applied_at`<br>`log[]` | — |
-| 16 | **clean** — archive completed entities | `apply.success: true`<br>`apply.applied_at` (≥ 1 min ago) | entity YAML moved to `db/_archive/`;<br>entity removed from World | — |
+| 8 | **operator** — gate human input; process when filled | ✍️ operator fills: `operator_input.instruction`<br>`operator_input.rationale` (optional) | opens gate: `operator_input.instruction: null`<br>on `proceed`/`p`: sets `processed: true`, `_parsed_operation: 'proceed'`, normalizes `instruction` to `recommendation.label`<br>on `skip`: `skip.active: true`<br>on `reset`: no-op (resetSystem handles)<br>on custom text: sets `processed: true`, `_parsed_operation: 'custom'` | — |
+| 9 | **reset** — wipe entity back to `{id}` for re-processing | `operator_input.instruction === 'reset'` | entity file replaced with `{ id }` only;<br>all components cleared | — |
+| 10 | **execute** — run Gmail instruction | `operator_input.processed: true` | `execution.success`<br>`execution.summary`<br>`execution.instruction`<br>`log[]` | `08-execute-instruction` |
+| 11 | **journal** — persist outcome to memo database | `content.body`<br>`operator_input.instruction`<br>`operator_input._parsed_operation`<br>`execution.summary`<br>`recommendation.journal_id` | `journal.summary`<br>`journal.keywords`<br>`journal.action_taken`<br>`journal.factors`<br>`journal.sender_email`<br>`journal.sender_offers`<br>`journal.sender_expects`<br>`journal.reader_value`<br>`journal.match_criteria`<br>`journal.rule` | `09-build-journal-entry`,<br>`10-build-presentation-entry` |
+| 12 | **plan** — generate pending mutation plan | `journal` (presence gate) | `plan.success`<br>`plan.text`<br>`plan.planned_at`<br>`log[]` | — |
+| 13 | **apply** — approve and execute mutations | ✍️ `apply.approved: true`<br>(agent writes `null`; operator sets `true`) | `apply.success`<br>`apply.output`<br>`apply.applied_at`<br>`log[]` | — |
+| 14 | **clean** — archive completed entities | `apply.success: true`<br>`apply.applied_at` (≥ 1 min ago) | entity YAML moved to `db/_archive/`;<br>entity removed from World | — |
 
 ## Operation
 
-The agent runs headlessly — no interactive prompt. To respond, edit the entity YAML in `personal-email/db/entities/<id>.yaml` directly. The agent picks up changes on the next loop iteration (every ~10 seconds).
-
-**`operator_input.instruction`** (legacy free-text) or **`operator_input.operation`** + **`operator_input.rationale`** (structured) — set one of these to unlock the next stage.
-
-- Use `operation` + `rationale` when you want to provide explicit training signal. The `rationale` (1-2 sentences) becomes the initial `trial_rationale` seed for trial-runner and is stored on `operator.rationale` for analysis.
-- Use `instruction` for ad-hoc commands (memo operations, questions, custom Gmail instructions).
+The agent runs headlessly — no interactive prompt. To respond, edit the entity YAML in `personal-email/db/entities/<id>.yaml` directly, or use the [email-trainer](../email-trainer/) triage UI. The agent picks up changes on the next loop iteration (every ~10 seconds).
 
 **`operator_input.instruction`** — set this field to one of:
 
 - `proceed` or `p` — apply the recommended action.
-- `skip` — skip this email without executing anything.
-- `quit` — stop the agent loop after the current iteration finishes.
-- `refresh` — clear all computed components and re-process from scratch.
-- `reload` — hot-reload microagent modules from disk, then re-process.
-- A memo command (e.g. `journal ...`) — operate on the journal or presentation memo databases; `instruction` is reset to `null` and `last_result` is written back so you can chain commands.
-- A natural-language question — answered from the email content; `instruction` reset to `null`, answer written to `last_answer`.
+- `skip` — pause this entity; sets a `skip` flag so it won't progress until reset.
+- `reset` — wipe all components and re-process from scratch.
 - Any other text — treated as a custom Gmail instruction passed directly to the execute stage.
+
+**`operator_input.rationale`** — optional 1–2 sentences explaining the decision. Flows into the journal and seeds `trial_rationale` for trial-runner.
 
 **`apply.approved`** — after the plan stage writes the proposed Gmail mutation plan to `plan.text`, the agent writes `apply.approved: null`. Set it to `true` to authorize the agent to call `google-email apply`.
 
@@ -97,11 +88,8 @@ For a full definition of the microagent pattern see [docs/ECS.md](./docs/ECS.md)
 
 - [00-fingerprint-email.coffee](./microagents/00-fingerprint-email.coffee) — extracts keywords and intent from email body.
 - [01-recommend-action.coffee](./microagents/01-recommend-action.coffee) — recommends what to do with the email.
-- [02-contains-question.coffee](./microagents/02-contains-question.coffee) — decides whether an operator instruction is a question.
-- [04-answer-question-from-email.coffee](./microagents/04-answer-question-from-email.coffee) — answers operator questions from email content.
 - [05-summarize-email.coffee](./microagents/05-summarize-email.coffee) — generates headline and summary text.
 - [06-presentation-rule-relevance.coffee](./microagents/06-presentation-rule-relevance.coffee) — checks whether saved formatting preferences apply.
-- [07-execute-memo-instruction.coffee](./microagents/07-execute-memo-instruction.coffee) — handles memo database instructions.
 - [08-execute-instruction.coffee](./microagents/08-execute-instruction.coffee) — executes Gmail actions.
 - [09-build-journal-entry.coffee](./microagents/09-build-journal-entry.coffee) — turns the outcome into a structured journal record.
 - [10-build-presentation-entry.coffee](./microagents/10-build-presentation-entry.coffee) — extracts reusable formatting preferences.
@@ -145,18 +133,13 @@ Each live entity is persisted as a YAML file in `db/entities/<id>.yaml`. Fields 
 | `recommendation` | `label` | string | Full display label combining `ref`, `operations`, and `rationale` |
 | `log` | *(array)* | string[] | Append-only list of timestamped log entries written by the display, execute, plan, and apply stages |
 | `traces` | *(array)* | object[] | Per-step timing records: `{ emoji, label, ms }` |
-| `operator_input` | `instruction` | string\|null | Operator free-text instruction; agent writes `null` to open the gate; operator fills in a value to unlock the next stage |
-| `operator_input` | `operation` | string\|null | Structured operation name (alternative to `instruction`; preferred when providing explicit training signal) |
-| `operator_input` | `rationale` | string\|null | Operator's rationale (1–2 sentences); stored on `operator.rationale` and seeds `trial_rationale` for trial-runner |
-| `operator_input` | `recommendation` | string | Copy of `recommendation.label` written by the agent for operator reference |
-| `operator_input` | `last_result` | string | Result text from the most recent memo command execution |
-| `operator_input` | `last_answer` | string | Answer to the most recent operator question |
+| `operator_input` | `instruction` | string\|null | Operator instruction; agent writes `null` to open gate; operator sets `proceed`, `skip`, `reset`, or a custom Gmail instruction |
+| `operator_input` | `rationale` | string\|null | Operator's rationale (1–2 sentences); seeds `trial_rationale` for trial-runner |
+| `operator_input` | `processed` | boolean | Set `true` by operator Stage 2 once the instruction has been handled (signals execute stage) |
+| `operator_input` | `_parsed_operation` | string | Agent-derived; `'proceed'` when operator accepted the recommendation, `'custom'` for any other instruction; not for direct human input |
 | `operator_input` | `notice_capture` | null | Reserved (future): information to capture for a notification toaster |
 | `operator_input` | `notice_display` | null | Reserved (future): how to present the notification in the toaster summary |
-| `operator` | `command` | string | Normalized command keyword: `proceed`, `skip`, `quit`, `refresh`, `reload`, or `execute` |
-| `operator` | `instruction` | string | Final instruction forwarded to the execute stage |
-| `operator` | `instructionOrRecommendation` | string | Operator instruction if custom; otherwise `recommendation.label`; combined with `rationale` for journal context |
-| `operator` | `rationale` | string | Operator's rationale copied from `operator_input.rationale` |
+| `skip` | `active` | boolean | Present when operator typed `skip`; halts entity progression until reset |
 | `execution` | `success` | boolean | Whether the Gmail execution succeeded |
 | `execution` | `summary` | string | Short description of the action(s) taken by the execute microagent |
 | `execution` | `instruction` | string | The instruction that was executed (echoed for audit) |

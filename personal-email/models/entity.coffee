@@ -30,7 +30,15 @@ _G.Entity = class Entity
     entity
 
   @save: (entity) ->
-    await writeFile @_path(entity.id), YAML.stringify(entity, null, 2), 'utf8'
+    yaml = YAML.stringify(entity, null, 2)
+    # YAML.stringify may omit quotes on leading-zero IDs like 012948, causing parsers to
+    # strip the zero and return the integer 12948. Force-quote the id line.
+    yaml = yaml.replace /^(id:\s*)(\S+)$/m, (_, prefix, val) ->
+      if (val.startsWith("'") and val.endsWith("'")) or (val.startsWith('"') and val.endsWith('"'))
+        prefix + val
+      else
+        prefix + "'#{val}'"
+    await writeFile @_path(entity.id), yaml, 'utf8'
     _G.World.set entity
     entity
 

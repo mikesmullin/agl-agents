@@ -36,17 +36,19 @@ const STAGES = [
   { id: 'awaiting_approval', label: 'Awaiting Approval', emoji: '☑️', t: 0.68, human: true },
   { id: 'applying', label: 'Applying', emoji: '🚀', t: 0.79, human: false },
   { id: 'done', label: 'Done', emoji: '🎉', t: 0.91, human: false },
+  { id: 'skipped', label: 'Skipped', emoji: '⏭️', t: 0.97, human: false },
 ];
 
 const STAGE_MAP = Object.fromEntries(STAGES.map(s => [s.id, s]));
 
 function getEntityStage(e) {
   if (!e) return STAGE_MAP['new'];
+  if (e.skip?.active) return STAGE_MAP['skipped'];
   if (e.apply?.applied_at) return STAGE_MAP['done'];
   if (e.apply?.approved === true && !e.apply?.applied_at) return STAGE_MAP['applying'];
   if (e.plan && (e.apply == null || e.apply?.approved == null)) return STAGE_MAP['awaiting_approval'];
-  // operator set but still executing/journaling/planning
-  if (e.operator || e.execution || e.journal) return STAGE_MAP['processing'];
+  // operator_input processed but still executing/journaling/planning
+  if ((e.operator_input?.processed) || e.execution || e.journal) return STAGE_MAP['processing'];
   // operator_input filled by human but not yet processed by agent
   if (e.operator_input && e.operator_input.instruction !== null && e.operator_input.instruction !== undefined) {
     return STAGE_MAP['processing'];
@@ -108,25 +110,29 @@ function app() {
     ws: null,
     wsStatus: 'connecting',
     forms: {},             // keyed by entity.id — form + UI state per entity
+    showAllStages: false,  // sidebar: show all stages vs. only stages with counts
     cfgDestinations: [],   // populated from /api/config
-    focusedIdx: 0,
+    focusedId: null,       // entity ID of the focused card (stable across list reorders)
+    tombstones: {},        // entity IDs that left the current filter (holds card slot as blank placeholder)
 
     // -------------------------------------------------------------------------
     // Computed
     // -------------------------------------------------------------------------
     get filteredEntities() {
+      // Sort by email date ascending (oldest first) — stable position regardless of stage transitions
       const sorted = [...this.entities].sort((a, b) => {
-        // Human-gated stages float to the top
-        const sa = getEntityStage(a);
-        const sb = getEntityStage(b);
-        const humanA = sa.human ? 0 : 1;
-        const humanB = sb.human ? 0 : 1;
-        if (humanA !== humanB) return humanA - humanB;
-        // Within same human-gate priority: sort by stage t value
-        return sa.t - sb.t;
+        const da = a.envelope?.date ? new Date(a.envelope.date).getTime() : 0;
+        const db = b.envelope?.date ? new Date(b.envelope.date).getTime() : 0;
+        return da - db;
       });
       if (!this.filter) return sorted;
-      return sorted.filter(e => getEntityStage(e).id === this.filter);
+      return sorted.filter(e => getEntityStage(e).id === this.filter || this.tombstones[e.id]);
+    },
+
+    get focusedIdx() {
+      if (!this.focusedId) return 0;
+      const idx = this.filteredEntities.findIndex(e => e.id === this.focusedId);
+      return idx >= 0 ? idx : 0;
     },
 
     get stageCounts() {
@@ -136,10 +142,15 @@ function app() {
         const stage = getEntityStage(e);
         counts[stage.id] = (counts[stage.id] || 0) + 1;
       });
+
       return counts;
     },
 
     get stages() { return STAGES; },
+
+    get visibleStages() {
+      return STAGES.filter(s => this.stageCounts[s.id] > 0 || this.showAllStages);
+    },
 
     get destinations() {
       return this.cfgDestinations.length ? this.cfgDestinations : [
@@ -155,6 +166,7 @@ function app() {
       this.connectWS();
       this.loadConfig();
       document.addEventListener('keydown', e => this.handleHotkey(e));
+      this.$watch('filter', () => { this.tombstones = {}; });
     },
 
     async loadConfig() {
@@ -163,6 +175,18 @@ function app() {
         const cfg = await res.json();
         if (cfg.destinations?.length) this.cfgDestinations = cfg.destinations;
       } catch { }
+    },
+
+    // -------------------------------------------------------------------------
+    // Sidebar helpers
+    // -------------------------------------------------------------------------
+    clickStageFilter(stageId) {
+      this.filter = this.filter === stageId ? null : stageId;
+      this.focusedId = null;
+    },
+
+    clickEyeToggle() {
+      this.showAllStages = !this.showAllStages;
     },
 
     // -------------------------------------------------------------------------
@@ -210,6 +234,10 @@ function app() {
         case 'entity:modified': {
           const idx = this.entities.findIndex(e => e.id === msg.entity.id);
           if (idx >= 0) {
+            // If entity was in the active filter but is no longer, mark as tombstone
+            const wasInFilter = this.filter && getEntityStage(this.entities[idx]).id === this.filter;
+            const isInFilter = this.filter && getEntityStage(msg.entity).id === this.filter;
+            if (wasInFilter && !isInFilter) this.tombstones[msg.entity.id] = true;
             this.entities[idx] = msg.entity;
           } else {
             this.entities.push(msg.entity);
@@ -221,12 +249,19 @@ function app() {
         case 'entity:deleted': {
           const idx = this.entities.findIndex(e => e.id === msg.id);
           if (idx >= 0) {
-            this.entities[idx]._deleting = true;
-            setTimeout(() => {
-              const i = this.entities.findIndex(e => e.id === msg.id);
-              if (i >= 0) this.entities.splice(i, 1);
+            if (this.tombstones[msg.id]) {
+              // Already a placeholder — remove immediately, no animation needed
+              delete this.tombstones[msg.id];
+              this.entities.splice(idx, 1);
               delete this.forms[msg.id];
-            }, 420);
+            } else {
+              this.entities[idx]._deleting = true;
+              setTimeout(() => {
+                const i = this.entities.findIndex(e => e.id === msg.id);
+                if (i >= 0) this.entities.splice(i, 1);
+                delete this.forms[msg.id];
+              }, 420);
+            }
           }
           break;
         }
@@ -238,9 +273,8 @@ function app() {
     // -------------------------------------------------------------------------
     _ensureForm(entity) {
       if (this.forms[entity.id]) return;
-      const rec = entity.recommendation?.operations || '';
       this.forms[entity.id] = {
-        instruction: rec,
+        instruction: '',
         rationale: entity.operator_input?.rationale || '',
         notice_capture: entity.operator_input?.notice_capture || '',
         notice_display: entity.operator_input?.notice_display || '',
@@ -250,6 +284,7 @@ function app() {
         error: null,
         submitting: false,
         submitted: false,
+        approving: false,
       };
     },
 
@@ -271,6 +306,7 @@ function app() {
     // -------------------------------------------------------------------------
     async submitTriage(entityId, overrideInstruction) {
       const form = this.getForm(entityId);
+      if (form.submitted || form.submitting) return;  // already sent, ignore duplicate calls
       const instruction = overrideInstruction != null ? overrideInstruction : form.instruction;
 
       if (!instruction || !instruction.trim()) {
@@ -307,29 +343,26 @@ function app() {
         form.submitted = true;
         if (instruction === 'proceed' || instruction === 'p') triggerConfetti();
 
-        setTimeout(() => {
-          const f = this.forms[entityId];
-          if (f) {
-            f.submitted = false;
-            f.instruction = '';
-            f.rationale = '';
-            f.notice_capture = '';
-            f.notice_display = '';
-            f.showMove = false;
-            f.showNotice = false;
-          }
-        }, 1600);
+        // Advance focus to next card
+        this._focusNext(entityId);
+
+        // Do NOT reset submitted — keep it true until the entity transitions stage.
+        // The tombstone system handles the card disappearing; resetting here causes a
+        // brief form re-flash before the stage change is broadcast.
       } catch (e) {
         form.error = e.message;
-      } finally {
-        form.submitting = false;
+        form.submitting = false;  // re-enable on failure only
       }
     },
 
     quickAction(entityId, action) {
       const form = this.getForm(entityId);
       form.instruction = action;
-      this.submitTriage(entityId);
+      if (action === 'proceed') {
+        this.submitTriage(entityId);
+      } else {
+        this._focusRationale(entityId);
+      }
     },
 
     moveAction(entityId) {
@@ -340,17 +373,30 @@ function app() {
         return;
       }
       form.instruction = `move to ${form.destination}`;
-      this.submitTriage(entityId);
+      this._focusRationale(entityId);
+    },
+
+    _focusRationale(entityId) {
+      this.$nextTick(() => {
+        const el = document.querySelector(`[data-rationale-for="${entityId}"]`);
+        el?.focus();
+      });
     },
 
     async approveEntity(entityId) {
+      const form = this.getForm(entityId);
+      if (form.approving) return;  // already approved, ignore duplicate calls
       try {
         await fetch(`/api/entities/${entityId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ apply: { approved: true } }),
         });
+        // Show in-card spinner until WS broadcasts the stage transition
+        const form = this.getForm(entityId);
+        form.approving = true;
         triggerConfetti();
+        this._focusNext(entityId);
       } catch (e) {
         console.error('Approve failed:', e);
       }
@@ -361,10 +407,22 @@ function app() {
         await fetch(`/api/entities/${entityId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ operator_input: { instruction: 'refresh' } }),
+          body: JSON.stringify({ operator_input: { instruction: 'reset' } }),
         });
       } catch (e) {
         console.error('Reject failed:', e);
+      }
+    },
+
+    async unskipEntity(entityId) {
+      try {
+        await fetch(`/api/entities/${entityId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ skip: { active: false }, operator_input: { instruction: 'reset' } }),
+        });
+      } catch (e) {
+        console.error('Unskip failed:', e);
       }
     },
 
@@ -424,47 +482,59 @@ function app() {
       if (!entities.length) return;
 
       switch (e.key) {
-        case 'j':
-          this.focusedIdx = Math.min(this.focusedIdx + 1, entities.length - 1);
-          this._scrollToCard(this.focusedIdx);
+        case 'j': {
+          const next = Math.min(this.focusedIdx + 1, entities.length - 1);
+          this.focusedId = entities[next].id;
           break;
-        case 'k':
-          this.focusedIdx = Math.max(this.focusedIdx - 1, 0);
-          this._scrollToCard(this.focusedIdx);
+        }
+        case 'k': {
+          const prev = Math.max(this.focusedIdx - 1, 0);
+          this.focusedId = entities[prev].id;
           break;
+        }
         case 'p': {
           const ent = entities[this.focusedIdx];
-          if (ent && getEntityStage(ent).id === 'awaiting_input')
+          if (ent && getEntityStage(ent).id === 'awaiting_input' && !this.getForm(ent.id).submitted)
             this.quickAction(ent.id, 'proceed');
           break;
         }
         case 's': {
           const ent = entities[this.focusedIdx];
-          if (ent && getEntityStage(ent).id === 'awaiting_input')
+          if (ent && getEntityStage(ent).id === 'awaiting_input' && !this.getForm(ent.id).submitted)
             this.quickAction(ent.id, 'skip');
+          break;
+        }
+        case 'd': {
+          const ent = entities[this.focusedIdx];
+          if (ent && getEntityStage(ent).id === 'awaiting_input' && !this.getForm(ent.id).submitted) {
+            e.preventDefault();
+            this.quickAction(ent.id, 'delete');
+          }
           break;
         }
         case 'a': {
           const ent = entities[this.focusedIdx];
-          if (ent && getEntityStage(ent).id === 'awaiting_approval')
+          if (ent && getEntityStage(ent).id === 'awaiting_approval' && !this.getForm(ent.id).approving)
             this.approveEntity(ent.id);
           break;
         }
         case 'f':
           e.preventDefault();
           this.filter = this.filter === 'awaiting_input' ? null : 'awaiting_input';
-          this.focusedIdx = 0;
+          this.focusedId = null;
           break;
         case 'Escape':
           this.filter = null;
-          this.focusedIdx = 0;
+          this.focusedId = null;
           break;
       }
     },
 
-    _scrollToCard(idx) {
-      const cards = document.querySelectorAll('[data-entity-card]');
-      if (cards[idx]) cards[idx].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    _focusNext(entityId) {
+      const entities = this.filteredEntities.filter(e => !this.tombstones[e.id]);
+      const idx = entities.findIndex(e => e.id === entityId);
+      const next = idx !== -1 && idx < entities.length - 1 ? idx + 1 : idx;
+      if (next >= 0) this.focusedId = entities[next].id;
     },
   };
 }

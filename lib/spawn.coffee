@@ -38,7 +38,7 @@ export spawn = _G.spawn = (cmd, args = [], options = {}) ->
         code: code
         stdout: result.stdout?.slice(0, 800)
         stderr: result.stderr?.slice(0, 800)
-      if assertExit0 and code isnt 0
+      if assertExit0 and code? and code isnt 0
         reject(new Error("Command failed (#{code}): #{result.cmd}\n#{result.stdout}\n#{result.stderr}"))
         return
       resolve(settledResult())

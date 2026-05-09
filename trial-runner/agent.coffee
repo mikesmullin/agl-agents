@@ -10,6 +10,7 @@ import '../lib/html-email.coffee'
 import '../lib/memo.coffee'
 import '../lib/recall.coffee'
 import '../lib/async.coffee'
+import { resolve } from 'path'
 
 # Reuse personal-email models (entity dir is overridden below before init)
 import '../personal-email/models/world.coffee'
@@ -83,7 +84,7 @@ _G.spawn = (cmd, args = [], options = {}) ->
 { runId, trialDir, trialEntityDir, entitiesCreated } = await setupSystem()
 
 if entitiesCreated is 0
-  console.error 'No eligible entities found in personal-email/db/_archive/ (need operator.command=proceed).'
+  console.error 'No eligible entities found in personal-email/db/_archive/ (need operator_input.source=proceed or operator.command=proceed).'
   process.exit 1
 
 # Point entity model at trial entity dir before init
@@ -131,4 +132,4 @@ console.log """
    Report: #{trialDir}/report-card.md
 """
 
-console.log '   (run with --promote <id> to back up and promote a trial\'s journal → personal-email/db/)'
+console.log '   (run with --promote <id> to back up and promote this trial\'s journal → personal-email/db/)'

@@ -18,7 +18,7 @@ export pageSystem = (since) ->
     traceLabel: 'Pulling latest emails'
 
   now = new Date().toISOString()
-  pullData = try YAML.parse(pullResult?.stdout or '') catch then { results: [], gone: [] }
+  pullData = (try YAML.parse(pullResult?.stdout or '') catch then null) or { results: [], gone: [] }
 
   # New emails written to local cache this pull
   for item in (pullData.results or [])
@@ -31,13 +31,13 @@ export pageSystem = (since) ->
       for t in (transitions or [])
         if REMOVE_ON_TRANSITION.has t.type
           _G.log 'page.entity.transition', { id: shortId, type: t.type }
-          await _G.Entity.delete shortId
+          await _G.Entity.archive shortId
           break
 
   # Emails that disappeared from the remote unread inbox
   for item in (pullData.gone or [])
     { shortId } = item
     _G.log 'page.entity.gone', { id: shortId }
-    await _G.Entity.delete shortId
+    await _G.Entity.archive shortId
 
   _lastCheckedAt = now

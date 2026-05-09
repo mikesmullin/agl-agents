@@ -1,7 +1,7 @@
 import { _G } from '../../lib/globals.coffee'
 
 export displaySystem = (confidenceThreshold) ->
-  entities = _G.World.Entity__find (e) -> e.recommendation? and not e.operator_input? and not e.operator?
+  entities = _G.World.Entity__find (e) -> e.recommendation? and not e.operator_input? and not e.skip?
   for entity in entities
     _G.currentEntityId = entity.id
     { envelope, summary, recommendation, recall } = entity

@@ -15,6 +15,7 @@ import { YAML } from 'bun'
 import { readFile } from 'fs/promises'
 import { mkdir } from 'fs/promises'
 import { resolve } from 'path'
+import '../lib/time.coffee'
 
 import './models/world.coffee'
 import './models/entity.coffee'
@@ -31,8 +32,7 @@ import { journalSystem } from './systems/journal.coffee'
 import { planSystem } from './systems/plan.coffee'
 import { applySystem } from './systems/apply.coffee'
 import { cleanSystem } from './systems/cleanup.coffee'
-import { refreshSystem } from './systems/refresh.coffee'
-import { reloadSystem } from './systems/reload.coffee'
+import { resetSystem } from './systems/refresh.coffee'
 
 Agent.default.model = _G.MODEL
 Agent.default.context_window = _G.CONTEXT_WINDOW
@@ -67,22 +67,24 @@ await _G.loadMoveFolderCacheLib()
 cliArgs = process.argv.slice(2)
 since = String(cliArgs[0] or '').trim() or undefined
 
-while not _G.quit
-  await pageSystem since
+pageLoadCooldown = new _G.Cooldown 10_000 # 10sec
 
-  await loadSystem()
+while not _G.quit
+  if pageLoadCooldown.tick()
+    await pageSystem since
+    await loadSystem()
+
   await fingerprintSystem()
   await recallSystem()
   await summarizeSystem()
   await recommendSystem()
   await displaySystem journalConfig.confidence_threshold
   await operatorSystem()
-  await refreshSystem()
-  await reloadSystem import.meta.dir + '/microagents'
+  await resetSystem()
   await executeSystem()
   await journalSystem()
   await planSystem()
   await applySystem()
   await cleanSystem()
 
-  await _G.sleep 10_000
+  await _G.sleep 1_000 # 1sec
