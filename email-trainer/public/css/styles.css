@@ -177,6 +177,34 @@
   transform: translateY(-1px);
 }
 
+.btn-archive {
+  background: #7c2d12;
+  color: #fdba74;
+  border-radius: 0.5rem;
+  border: 1px solid #9a3412;
+  transition: background 0.15s, transform 0.1s;
+  cursor: pointer;
+}
+
+.btn-archive:hover {
+  background: #9a3412;
+  transform: translateY(-1px);
+}
+
+.btn-move {
+  background: #1e1b4b;
+  color: #a5b4fc;
+  border-radius: 0.5rem;
+  border: 1px solid #3730a3;
+  transition: background 0.15s, color 0.15s, transform 0.1s;
+  cursor: pointer;
+}
+
+.btn-move:hover {
+  background: #312e81;
+  transform: translateY(-1px);
+}
+
 /* ===================================================
    Form inputs
    =================================================== */
@@ -345,22 +373,22 @@ body {
 }
 
 /* ===================================================
-   Human-gate highlight (awaiting_input border glow)
+   Focused card pulse
    =================================================== */
-@keyframes borderGlow {
+@keyframes focusPulse {
 
   0%,
   100% {
-    box-shadow: 0 0 0 1px rgba(234, 179, 8, 0.3), 0 4px 20px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.5), 0 8px 32px rgba(99, 102, 241, 0.25);
   }
 
   50% {
-    box-shadow: 0 0 0 1px rgba(234, 179, 8, 0.6), 0 4px 24px rgba(234, 179, 8, 0.08);
+    box-shadow: 0 0 0 5px rgba(129, 140, 248, 0.25), 0 8px 40px rgba(99, 102, 241, 0.45);
   }
 }
 
-.card-gate-input {
-  animation: borderGlow 3s ease-in-out infinite;
+.card-focused {
+  animation: focusPulse 2s ease-in-out infinite;
 }
 
 /* ===================================================

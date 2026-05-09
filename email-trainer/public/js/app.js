@@ -113,7 +113,7 @@ function app() {
     showAllStages: false,  // sidebar: show all stages vs. only stages with counts
     cfgDestinations: [],   // populated from /api/config
     focusedId: null,       // entity ID of the focused card (stable across list reorders)
-    tombstones: {},        // entity IDs that left the current filter (holds card slot as blank placeholder)
+    slots: Array.from({ length: 10 }, () => ({ entityId: null })),  // fixed 10-slot display window
 
     // -------------------------------------------------------------------------
     // Computed
@@ -126,13 +126,18 @@ function app() {
         return da - db;
       });
       if (!this.filter) return sorted;
-      return sorted.filter(e => getEntityStage(e).id === this.filter || this.tombstones[e.id]);
+      return sorted.filter(e => getEntityStage(e).id === this.filter);
     },
 
     get focusedIdx() {
       if (!this.focusedId) return 0;
       const idx = this.filteredEntities.findIndex(e => e.id === this.focusedId);
       return idx >= 0 ? idx : 0;
+    },
+
+    get focusedStageId() {
+      const ent = this.getEntityById(this.focusedId);
+      return ent ? getEntityStage(ent).id : null;
     },
 
     get stageCounts() {
@@ -166,7 +171,12 @@ function app() {
       this.connectWS();
       this.loadConfig();
       document.addEventListener('keydown', e => this.handleHotkey(e));
-      this.$watch('filter', () => { this.tombstones = {}; });
+      // Reset slots when filter changes, then backfill from new filtered list
+      this.$watch('filter', () => {
+        this.slots = Array.from({ length: 10 }, () => ({ entityId: null }));
+        this.$nextTick(() => this._syncSlots());
+      });
+      this.$nextTick(() => this._syncSlots());
     },
 
     async loadConfig() {
@@ -234,10 +244,6 @@ function app() {
         case 'entity:modified': {
           const idx = this.entities.findIndex(e => e.id === msg.entity.id);
           if (idx >= 0) {
-            // If entity was in the active filter but is no longer, mark as tombstone
-            const wasInFilter = this.filter && getEntityStage(this.entities[idx]).id === this.filter;
-            const isInFilter = this.filter && getEntityStage(msg.entity).id === this.filter;
-            if (wasInFilter && !isInFilter) this.tombstones[msg.entity.id] = true;
             this.entities[idx] = msg.entity;
           } else {
             this.entities.push(msg.entity);
@@ -249,23 +255,17 @@ function app() {
         case 'entity:deleted': {
           const idx = this.entities.findIndex(e => e.id === msg.id);
           if (idx >= 0) {
-            if (this.tombstones[msg.id]) {
-              // Already a placeholder — remove immediately, no animation needed
-              delete this.tombstones[msg.id];
-              this.entities.splice(idx, 1);
+            this.entities[idx]._deleting = true;
+            setTimeout(() => {
+              const i = this.entities.findIndex(e => e.id === msg.id);
+              if (i >= 0) this.entities.splice(i, 1);
               delete this.forms[msg.id];
-            } else {
-              this.entities[idx]._deleting = true;
-              setTimeout(() => {
-                const i = this.entities.findIndex(e => e.id === msg.id);
-                if (i >= 0) this.entities.splice(i, 1);
-                delete this.forms[msg.id];
-              }, 420);
-            }
+            }, 420);
           }
           break;
         }
       }
+      this._syncSlots();
     },
 
     // -------------------------------------------------------------------------
@@ -347,8 +347,7 @@ function app() {
         this._focusNext(entityId);
 
         // Do NOT reset submitted — keep it true until the entity transitions stage.
-        // The tombstone system handles the card disappearing; resetting here causes a
-        // brief form re-flash before the stage change is broadcast.
+        // The WS broadcast will update the entity; resetting here causes a brief form re-flash.
       } catch (e) {
         form.error = e.message;
         form.submitting = false;  // re-enable on failure only
@@ -440,6 +439,29 @@ function app() {
 
     stripAnsi(str) { return stripAnsi(str); },
 
+    recChipClass(ops) {
+      const op = (ops || '').toLowerCase();
+      if (op.includes('delete') || op.includes('trash'))
+        return 'bg-red-900/40 border border-red-700/40 text-red-300';
+      if (op.includes('archive'))
+        return 'bg-orange-900/40 border border-orange-700/40 text-orange-300';
+      if (op.includes('move') || op.includes('label'))
+        return 'bg-indigo-900/40 border border-indigo-700/40 text-indigo-300';
+      if (op.includes('skip'))
+        return 'bg-gray-700/60 border border-gray-600/40 text-gray-400';
+      if (op.includes('proceed') || op.includes('keep'))
+        return 'bg-green-900/40 border border-green-700/40 text-green-300';
+      return 'bg-gray-700/60 border border-gray-600/40 text-gray-300';
+    },
+
+    confMeterColor(c) {
+      const n = parseFloat(c);
+      if (isNaN(n)) return '#6b7280';
+      if (n >= 75) return '#22c55e';  // green
+      if (n >= 40) return '#eab308';  // yellow
+      return '#ef4444';               // red
+    },
+
     entitySummaryFields(entity) {
       const out = {};
       if (entity.envelope) {
@@ -478,34 +500,42 @@ function app() {
     // -------------------------------------------------------------------------
     handleHotkey(e) {
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
-      const entities = this.filteredEntities;
-      if (!entities.length) return;
 
       switch (e.key) {
         case 'j': {
-          const next = Math.min(this.focusedIdx + 1, entities.length - 1);
-          this.focusedId = entities[next].id;
+          // Move to next filled slot, wrapping around
+          const filled = this.slots.map((s, i) => i).filter(i => !!this.slots[i].entityId);
+          if (!filled.length) break;
+          const curSlot = this.slots.findIndex(s => s.entityId === this.focusedId);
+          const curPos = filled.indexOf(curSlot);
+          const nextPos = (curPos + 1) % filled.length;
+          this.focusedId = this.slots[filled[nextPos]].entityId;
           break;
         }
         case 'k': {
-          const prev = Math.max(this.focusedIdx - 1, 0);
-          this.focusedId = entities[prev].id;
+          // Move to prev filled slot, wrapping around
+          const filled = this.slots.map((s, i) => i).filter(i => !!this.slots[i].entityId);
+          if (!filled.length) break;
+          const curSlot = this.slots.findIndex(s => s.entityId === this.focusedId);
+          const curPos = filled.indexOf(curSlot);
+          const prevPos = (curPos - 1 + filled.length) % filled.length;
+          this.focusedId = this.slots[filled[prevPos]].entityId;
           break;
         }
         case 'p': {
-          const ent = entities[this.focusedIdx];
+          const ent = this.getEntityById(this.focusedId);
           if (ent && getEntityStage(ent).id === 'awaiting_input' && !this.getForm(ent.id).submitted)
             this.quickAction(ent.id, 'proceed');
           break;
         }
         case 's': {
-          const ent = entities[this.focusedIdx];
+          const ent = this.getEntityById(this.focusedId);
           if (ent && getEntityStage(ent).id === 'awaiting_input' && !this.getForm(ent.id).submitted)
             this.quickAction(ent.id, 'skip');
           break;
         }
         case 'd': {
-          const ent = entities[this.focusedIdx];
+          const ent = this.getEntityById(this.focusedId);
           if (ent && getEntityStage(ent).id === 'awaiting_input' && !this.getForm(ent.id).submitted) {
             e.preventDefault();
             this.quickAction(ent.id, 'delete');
@@ -513,9 +543,19 @@ function app() {
           break;
         }
         case 'a': {
-          const ent = entities[this.focusedIdx];
-          if (ent && getEntityStage(ent).id === 'awaiting_approval' && !this.getForm(ent.id).approving)
+          const ent = this.getEntityById(this.focusedId);
+          if (!ent) break;
+          const stage = getEntityStage(ent).id;
+          if (stage === 'awaiting_input' && !this.getForm(ent.id).submitted)
+            this.quickAction(ent.id, 'archive');
+          else if (stage === 'awaiting_approval' && !this.getForm(ent.id).approving)
             this.approveEntity(ent.id);
+          break;
+        }
+        case 'r': {
+          const ent = this.getEntityById(this.focusedId);
+          if (ent && getEntityStage(ent).id === 'skipped')
+            this.unskipEntity(ent.id);
           break;
         }
         case 'f':
@@ -530,11 +570,52 @@ function app() {
       }
     },
 
+    getEntityById(id) {
+      return id ? this.entities.find(e => e.id === id) ?? null : null;
+    },
+
+    _syncSlots() {
+      const filteredIds = new Set(this.filteredEntities.map(e => e.id));
+
+      // 1. Vacate slots whose entity left the filtered list
+      let vacated = false;
+      for (const slot of this.slots) {
+        if (slot.entityId && !filteredIds.has(slot.entityId)) {
+          slot.entityId = null;
+          vacated = true;
+        }
+      }
+
+      // 2. Backfill empty slots — delayed if we just vacated so fade-out plays first
+      const fill = () => {
+        const assignedIds = new Set(this.slots.filter(s => s.entityId).map(s => s.entityId));
+        const unassigned = this.filteredEntities.filter(e => !assignedIds.has(e.id));
+        for (const slot of this.slots) {
+          if (!slot.entityId && unassigned.length > 0) {
+            slot.entityId = unassigned.shift().id;
+          }
+        }
+        // Auto-focus first filled slot if nothing is focused
+        if (!this.focusedId || !filteredIds.has(this.focusedId)) {
+          const first = this.slots.find(s => s.entityId);
+          if (first) this.focusedId = first.entityId;
+        }
+      };
+
+      if (vacated) {
+        setTimeout(fill, 250); // let fade-out play before new card fades in
+      } else {
+        fill();
+      }
+    },
+
     _focusNext(entityId) {
-      const entities = this.filteredEntities.filter(e => !this.tombstones[e.id]);
-      const idx = entities.findIndex(e => e.id === entityId);
-      const next = idx !== -1 && idx < entities.length - 1 ? idx + 1 : idx;
-      if (next >= 0) this.focusedId = entities[next].id;
+      // Move focus to the next filled slot after the given entity's slot
+      const curSlotIdx = this.slots.findIndex(s => s.entityId === entityId);
+      const filled = this.slots.map((s, i) => i).filter(i => !!this.slots[i].entityId && this.slots[i].entityId !== entityId);
+      if (!filled.length) { this.focusedId = null; return; }
+      const next = filled.find(i => i > curSlotIdx) ?? filled[0];
+      this.focusedId = this.slots[next].entityId;
     },
   };
 }

@@ -67,7 +67,7 @@ await _G.loadMoveFolderCacheLib()
 cliArgs = process.argv.slice(2)
 since = String(cliArgs[0] or '').trim() or undefined
 
-pageLoadCooldown = new _G.Cooldown 10_000 # 10sec
+pageLoadCooldown = new _G.Cooldown 60_000*5 # 5min
 
 while not _G.quit
   if pageLoadCooldown.tick()
