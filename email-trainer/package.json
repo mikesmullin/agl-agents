@@ -6,6 +6,8 @@
     "start": "bun server.coffee"
   },
   "dependencies": {
-    "bun-coffeescript": "^1.0.3"
+    "@types/js-yaml": "^4.0.9",
+    "bun-coffeescript": "^1.0.3",
+    "js-yaml": "^4.1.1"
   }
 }

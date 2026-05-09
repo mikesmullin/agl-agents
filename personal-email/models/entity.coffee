@@ -1,6 +1,6 @@
 import { readFile, writeFile, mkdir, rm, readdir, rename } from 'fs/promises'
 import { resolve } from 'path'
-import { YAML } from 'bun'
+import { load as yamlLoad, dump as yamlDump } from 'js-yaml'
 import { _G } from '../../lib/globals.coffee'
 
 _entityDir = -> _G.ENTITY_DIR or resolve process.cwd(), 'personal-email/db/entities'
@@ -22,7 +22,7 @@ _G.Entity = class Entity
   @load: (id) ->
     try
       text = await readFile @_path(id), 'utf8'
-      entity = YAML.parse(text) ? { id }
+      entity = yamlLoad(text) ? { id }
     catch
       entity = { id }
     entity.id = String(id)  # filename is canonical; YAML may misparse IDs like 0e6836 as numbers
@@ -30,15 +30,7 @@ _G.Entity = class Entity
     entity
 
   @save: (entity) ->
-    yaml = YAML.stringify(entity, null, 2)
-    # YAML.stringify may omit quotes on leading-zero IDs like 012948, causing parsers to
-    # strip the zero and return the integer 12948. Force-quote the id line.
-    yaml = yaml.replace /^(id:\s*)(\S+)$/m, (_, prefix, val) ->
-      if (val.startsWith("'") and val.endsWith("'")) or (val.startsWith('"') and val.endsWith('"'))
-        prefix + val
-      else
-        prefix + "'#{val}'"
-    await writeFile @_path(entity.id), yaml, 'utf8'
+    await writeFile @_path(entity.id), yamlDump(entity, { indent: 2 }), 'utf8'
     _G.World.set entity
     entity
 

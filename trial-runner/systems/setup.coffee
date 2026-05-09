@@ -1,6 +1,6 @@
 import { readdir, readFile, mkdir, writeFile } from 'fs/promises'
 import { resolve } from 'path'
-import { YAML } from 'bun'
+import { load as yamlLoad, dump as yamlDump } from 'js-yaml'
 import { _G } from '../../lib/globals.coffee'
 
 ARCHIVE_SRC = resolve process.cwd(), 'personal-email/db/_archive'
@@ -43,7 +43,7 @@ export setupSystem = ->
     for file in yamlFiles
       try
         text = await readFile resolve(entitiesPath, file), 'utf8'
-        e = YAML.parse(text) or {}
+        e = yamlLoad(text) or {}
         if e.trial_result? then hasResults = true; break
       catch then continue
 
@@ -53,7 +53,7 @@ export setupSystem = ->
     for file in yamlFiles
       try
         text = await readFile resolve(entitiesPath, file), 'utf8'
-        e = YAML.parse(text) or {}
+        e = yamlLoad(text) or {}
         if e._trial?.backprop_rationale and e.id
           backpropByEntityId[e.id] = String(e._trial.backprop_rationale).trim()
       catch then continue
@@ -81,7 +81,7 @@ export setupSystem = ->
     catch
       continue
 
-    entity = try YAML.parse(text) catch then null
+    entity = try yamlLoad(text) catch then null
     unless entity and typeof entity is 'object'
       continue
 
@@ -121,7 +121,7 @@ export setupSystem = ->
 
     await writeFile(
       resolve(trialEntityDir, "#{entity.id}.yaml"),
-      YAML.stringify(trialEntity, null, 2),
+      yamlDump(trialEntity, { indent: 2 }),
       'utf8'
     )
     entitiesCreated++

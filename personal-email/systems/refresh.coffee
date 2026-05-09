@@ -6,4 +6,4 @@ export resetSystem = ->
   for entity in entities
     _G.currentEntityId = entity.id
     await _G.traceStep '🔄', 'Resetting entity', ->
-      _G.Entity.save { id: entity.id, origin: { raw: entity.origin?.raw } }
+      _G.Entity.save { id: entity.id, origin: { raw: entity.origin?.raw }, log: entity.log }

@@ -1,7 +1,7 @@
 # email-trainer back-end server
 # Bun HTTP + WebSocket + poll-based file watcher
 
-import { YAML } from 'bun'
+import { load as yamlLoad, dump as yamlDump } from 'js-yaml'
 import { readFileSync, writeFileSync, readdirSync, statSync, existsSync, mkdirSync } from 'fs'
 import { resolve, extname } from 'path'
 
@@ -19,7 +19,7 @@ configPath = resolve __dir, 'config.yaml'
 config = do ->
   return DEFAULT_CONFIG unless existsSync configPath
   try
-    YAML.parse readFileSync configPath, 'utf8'
+    yamlLoad readFileSync configPath, 'utf8'
   catch e
     console.warn "config.yaml parse error: #{e.message}"
     DEFAULT_CONFIG
@@ -34,7 +34,7 @@ PERSONAL_EMAIL_CONFIG_PATH = resolve __dir, '../personal-email/config.yaml'
 DESTINATIONS = do ->
   try
     raw = readFileSync PERSONAL_EMAIL_CONFIG_PATH, 'utf8'
-    parsed = YAML.parse raw
+    parsed = yamlLoad raw
     labels = parsed?.google_email?.labels
     if labels and typeof labels is 'object' and not Array.isArray labels
       Object.keys labels
@@ -79,7 +79,7 @@ entityPath = (id) -> resolve ENTITIES_DIR, "#{id}.yaml"
 readEntity = (id) ->
   try
     text = readFileSync entityPath(id), 'utf8'
-    entity = YAML.parse text
+    entity = yamlLoad text
     entity.id = String(id) if entity  # YAML may parse leading-zero IDs (e.g. 012948) as integers
     entity
   catch
@@ -108,16 +108,10 @@ patchEntityFile = (id, patch) ->
   path = entityPath id
   throw new Error "Entity not found: #{id}" unless existsSync path
   text = readFileSync path, 'utf8'
-  entity = YAML.parse text
+  entity = yamlLoad text
   entity.id = String(id) if entity  # YAML may parse leading-zero IDs as integers
   updated = deepMerge entity, patch
-  yaml = YAML.stringify(updated)
-  yaml = yaml.replace /^(id:\s*)(\S+)$/m, (_, prefix, val) ->
-    if (val.startsWith("'") and val.endsWith("'")) or (val.startsWith('"') and val.endsWith('"'))
-      prefix + val
-    else
-      prefix + "'#{val}'"
-  writeFileSync path, yaml, 'utf8'
+  writeFileSync path, yamlDump(updated, { indent: 2 }), 'utf8'
   updated
 
 listEntityIds = ->
