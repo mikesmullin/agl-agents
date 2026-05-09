@@ -2,7 +2,7 @@ import '../microagents/01-recommend-action.coffee'
 import { _G } from '../../lib/globals.coffee'
 
 export recommendSystem = ->
-  entities = _G.World.Entity__find (e) -> e.recall? and not e.recommendation?
+  entities = (_G.World.Entity__find (e) -> e.recall? and not e.recommendation?)[0..._G.pipelineWidth]
   for entity in entities
     _G.currentEntityId = entity.id
     { content, recall } = entity

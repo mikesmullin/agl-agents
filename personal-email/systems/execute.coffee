@@ -2,8 +2,9 @@ import '../microagents/08-execute-instruction.coffee'
 import { _G } from '../../lib/globals.coffee'
 
 export executeSystem = ->
-  entities = _G.World.Entity__find (e) ->
+  entities = (_G.World.Entity__find (e) ->
     e.operator_input?.processed is true and not e.execution?
+  )[0..._G.pipelineWidth]
   for entity in entities
     _G.currentEntityId = entity.id
     { operator_input } = entity

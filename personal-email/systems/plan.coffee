@@ -1,7 +1,7 @@
 import { _G } from '../../lib/globals.coffee'
 
 export planSystem = ->
-  entities = _G.World.Entity__find (e) -> e.journal? and not e.plan?
+  entities = (_G.World.Entity__find (e) -> e.journal? and not e.plan?)[0..._G.pipelineWidth]
   return unless entities.length
 
   for entity in entities

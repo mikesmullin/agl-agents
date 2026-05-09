@@ -3,7 +3,7 @@ import '../microagents/10-build-presentation-entry.coffee'
 import { _G } from '../../lib/globals.coffee'
 
 export journalSystem = ->
-  entities = _G.World.Entity__find (e) -> e.execution? and not e.journal?
+  entities = (_G.World.Entity__find (e) -> e.execution? and not e.journal?)[0..._G.pipelineWidth]
   for entity in entities
     _G.currentEntityId = entity.id
     { content, operator_input, execution, recommendation } = entity

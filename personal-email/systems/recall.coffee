@@ -2,7 +2,7 @@ import '../microagents/06-presentation-rule-relevance.coffee'
 import { _G } from '../../lib/globals.coffee'
 
 export recallSystem = ->
-  entities = _G.World.Entity__find (e) -> e.fingerprint? and not e.recall?
+  entities = (_G.World.Entity__find (e) -> e.fingerprint? and not e.recall?)[0..._G.pipelineWidth]
   for entity in entities
     _G.currentEntityId = entity.id
     { content, envelope, fingerprint } = entity

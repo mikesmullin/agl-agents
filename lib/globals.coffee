@@ -14,4 +14,5 @@ export _G =
   PRESENTATION_MEMO_DB: resolve process.cwd(), 'personal-email/db/presentation'
   PAGE_SIZE: 10
   PULL_BATCH_SIZE: 10
+  pipelineWidth: 10
   cachedMoveFolders: []

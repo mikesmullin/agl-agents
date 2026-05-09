@@ -2,7 +2,7 @@ import { _G } from '../../lib/globals.coffee'
 
 export operatorSystem = ->
   # Stage 1: write operator_input gate for entities ready for human review
-  pending = _G.World.Entity__find (e) -> e.recommendation? and not e.operator_input? and not e.skip?
+  pending = (_G.World.Entity__find (e) -> e.recommendation? and not e.operator_input? and not e.skip?)[0..._G.pipelineWidth]
   for entity in pending
     _G.currentEntityId = entity.id
     await _G.Entity.patch entity, 'operator_input',
@@ -12,8 +12,9 @@ export operatorSystem = ->
       notice_display: null  # (future) how to present it in the toaster summary
 
   # Stage 2: process entities where human has filled in an instruction
-  entities = _G.World.Entity__find (e) ->
+  entities = (_G.World.Entity__find (e) ->
     e.operator_input? and not e.skip? and not e.operator_input.processed? and e.operator_input.instruction?
+  )[0..._G.pipelineWidth]
   for entity in entities
     _G.currentEntityId = entity.id
     { recommendation, operator_input } = entity

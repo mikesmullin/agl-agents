@@ -2,7 +2,7 @@ import '../microagents/05-summarize-email.coffee'
 import { _G } from '../../lib/globals.coffee'
 
 export summarizeSystem = ->
-  entities = _G.World.Entity__find (e) -> e.recall? and not e.summary?
+  entities = (_G.World.Entity__find (e) -> e.recall? and not e.summary?)[0..._G.pipelineWidth]
   for entity in entities
     _G.currentEntityId = entity.id
     { content, recall } = entity
