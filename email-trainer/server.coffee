@@ -1,8 +1,8 @@
 # email-trainer back-end server
 # Bun HTTP + WebSocket + poll-based file watcher
 
-import { load as yamlLoad, dump as yamlDump } from 'js-yaml'
-import { readFileSync, writeFileSync, readdirSync, statSync, existsSync, mkdirSync } from 'fs'
+import { load as yamlLoad, loadAll as yamlLoadAll, dump as yamlDump } from 'js-yaml'
+import { readFileSync, writeFileSync, readdirSync, statSync, existsSync, mkdirSync, unlinkSync, rmSync } from 'fs'
 import { resolve, extname } from 'path'
 
 # ---------------------------------------------------------------------------
@@ -218,6 +218,174 @@ handleAPI = (req, url) ->
       poll_interval_ms: POLL_MS
       destinations: DESTINATIONS
     }), headers: { 'Content-Type': 'application/json' }
+
+  # GET /api/archive — list all _archive/*.yaml entities with journal cross-reference
+  if method is 'GET' and pathname is '/api/archive'
+    archiveDir  = resolve ENTITIES_DIR, '../_archive'
+    journalPath = resolve ENTITIES_DIR, '../journal.yaml'
+    try
+      # Load journal once for cross-referencing
+      journalMap = {}
+      if existsSync journalPath
+        journalDocs = []
+        yamlLoadAll readFileSync(journalPath, 'utf8'), (doc) -> journalDocs.push doc if doc
+        for doc in journalDocs
+          journalMap[String doc.id] = doc if doc?.id?
+
+      files = readdirSync archiveDir
+      entries = files
+        .filter (f) -> f.endsWith '.yaml'
+        .map (f) ->
+          try
+            text   = readFileSync resolve(archiveDir, f), 'utf8'
+            entity = yamlLoad text
+            return null unless entity
+            entity.id = String f.replace /\.yaml$/, ''
+            slim = trimEntity entity
+            # Pluck only the fields needed by the UI
+            out =
+              id:             slim.id
+              envelope:
+                from: slim.envelope?.from   ? null
+              apply:
+                applied_at: slim.apply?.applied_at ? null
+              summary:
+                headline:    slim.summary?.headline    ? null
+                description: slim.summary?.description ? null
+              recommendation:
+                journal_id:  slim.recommendation?.journal_id  ? null
+                operations:  slim.recommendation?.operations  ? null
+                confidence:  slim.recommendation?.confidence  ? null
+                rationale:   slim.recommendation?.rationale   ? null
+              operator_input:
+                instruction:      slim.operator_input?.instruction      ? null
+                _parsed_operation: slim.operator_input?._parsed_operation ? null
+              execution:
+                instruction: slim.execution?.instruction ? null
+            # Cross-reference journal for confirmed_count / last_confirmed_ts
+            jid = slim.recommendation?.journal_id
+            if jid?
+              jentry = journalMap[String jid]
+              if jentry?.metadata
+                out.journal_meta =
+                  confirmed_count:    jentry.metadata.confirmed_count    ? null
+                  last_confirmed_ts:  jentry.metadata.last_confirmed_ts  ? null
+            out
+          catch
+            null
+        .filter Boolean
+      return new Response JSON.stringify(entries),
+        headers: { 'Content-Type': 'application/json' }
+    catch e
+      return new Response JSON.stringify([]),
+        headers: { 'Content-Type': 'application/json' }
+
+  # DELETE /api/archive/:id — permanently delete an archived entity file
+  archiveDeleteMatch = pathname.match /^\/api\/archive\/([^/]+)$/
+  if method is 'DELETE' and archiveDeleteMatch
+    id = archiveDeleteMatch[1]
+    # Sanitize: only allow hex filenames (no path traversal)
+    unless /^[a-zA-Z0-9_-]+$/.test id
+      return new Response JSON.stringify(error: 'invalid id'),
+        status: 400, headers: { 'Content-Type': 'application/json' }
+    archiveDir = resolve ENTITIES_DIR, '../_archive'
+    filePath = resolve archiveDir, "#{id}.yaml"
+    try
+      unlinkSync filePath
+      return new Response JSON.stringify(ok: true),
+        headers: { 'Content-Type': 'application/json' }
+    catch e
+      return new Response JSON.stringify(error: e.message),
+        status: 404, headers: { 'Content-Type': 'application/json' }
+
+  # GET /api/trials — list trial run report-cards
+  if method is 'GET' and pathname is '/api/trials'
+    trialDir = resolve ENTITIES_DIR, '../_archive/trial'
+    agentRoot = resolve __dir, '..'
+    try
+      dirs = readdirSync trialDir
+      entries = dirs
+        .filter (d) ->
+          try statSync(resolve(trialDir, d)).isDirectory()
+          catch then false
+        .map (d) ->
+          try
+            folderSt = statSync resolve(trialDir, d)
+            base =
+              id:          d
+              date:        folderSt.mtime.toISOString()
+              passing:     null
+              total:       null
+              score:       null
+              grade:       null
+              duration_ms: null
+            rcPath = resolve trialDir, d, 'report-card.md'
+            return base unless existsSync rcPath
+            text  = readFileSync rcPath, 'utf8'
+            rcSt  = statSync rcPath
+            base.date = (rcSt.birthtimeMs > 0 and rcSt.birthtimeMs isnt rcSt.ctimeMs) and rcSt.birthtime.toISOString() or rcSt.mtime.toISOString()
+            # Duration: report-card.md creation time minus trial folder creation time
+            rcMs     = rcSt.birthtimeMs > 0 and rcSt.birthtimeMs isnt rcSt.ctimeMs and rcSt.birthtimeMs or rcSt.mtimeMs
+            folderMs = folderSt.birthtimeMs > 0 and folderSt.birthtimeMs isnt folderSt.ctimeMs and folderSt.birthtimeMs or folderSt.mtimeMs
+            base.duration_ms = if rcMs > folderMs then rcMs - folderMs else null
+            # parse score line: **Score:** (11/12) 92% = Grade A
+            scoreMatch = text.match /\*\*Score:\*\*\s+\((\d+)\/(\d+)\)\s+(\d+)%\s+=\s+Grade\s+([A-F][+-]?)/
+            return base unless scoreMatch
+            base.passing = parseInt scoreMatch[1], 10
+            base.total   = parseInt scoreMatch[2], 10
+            base.score   = parseInt scoreMatch[3], 10
+            base.grade   = scoreMatch[4]
+            base
+          catch
+            null
+        .filter Boolean
+      return new Response JSON.stringify(entries),
+        headers: { 'Content-Type': 'application/json' }
+    catch e
+      return new Response JSON.stringify([]),
+        headers: { 'Content-Type': 'application/json' }
+
+  # DELETE /api/trials/:id — permanently delete a trial folder
+  trialDeleteMatch = pathname.match /^\/api\/trials\/([^/]+)$/
+  if method is 'DELETE' and trialDeleteMatch
+    id = trialDeleteMatch[1]
+    unless /^[a-zA-Z0-9_-]+$/.test id
+      return new Response JSON.stringify(error: 'invalid id'),
+        status: 400, headers: { 'Content-Type': 'application/json' }
+    trialDir = resolve ENTITIES_DIR, '../_archive/trial'
+    folderPath = resolve trialDir, id
+    try
+      rmSync folderPath, { recursive: true, force: true }
+      return new Response JSON.stringify(ok: true),
+        headers: { 'Content-Type': 'application/json' }
+    catch e
+      return new Response JSON.stringify(error: e.message),
+        status: 404, headers: { 'Content-Type': 'application/json' }
+
+  # POST /api/trials/:id/promote — run bun trial-runner/agent.coffee --promote <id>
+  trialPromoteMatch = pathname.match /^\/api\/trials\/([^/]+)\/promote$/
+  if method is 'POST' and trialPromoteMatch
+    id = trialPromoteMatch[1]
+    unless /^[a-zA-Z0-9_-]+$/.test id
+      return new Response JSON.stringify(error: 'invalid id'),
+        status: 400, headers: { 'Content-Type': 'application/json' }
+    agentRoot = resolve __dir, '..'
+    try
+      result = Bun.spawnSync ['bun', 'trial-runner/agent.coffee', '--promote', id],
+        cwd: agentRoot
+        stdout: 'pipe'
+        stderr: 'pipe'
+      stdout = result.stdout?.toString?() ? ''
+      stderr = result.stderr?.toString?() ? ''
+      if result.exitCode is 0
+        return new Response JSON.stringify(ok: true, output: stdout),
+          headers: { 'Content-Type': 'application/json' }
+      else
+        return new Response JSON.stringify(error: stderr or stdout, exitCode: result.exitCode),
+          status: 500, headers: { 'Content-Type': 'application/json' }
+    catch e
+      return new Response JSON.stringify(error: e.message),
+        status: 500, headers: { 'Content-Type': 'application/json' }
 
   # PATCH /api/entities/:id
   match = pathname.match /^\/api\/entities\/([^/]+)$/

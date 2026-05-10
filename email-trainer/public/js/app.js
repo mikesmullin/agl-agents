@@ -115,6 +115,29 @@ function app() {
     focusedId: null,       // entity ID of the focused card (stable across list reorders)
     slots: Array.from({ length: 10 }, () => ({ entityId: null })),  // fixed 10-slot display window
 
+    // Training section state
+    view: 'triage',        // 'triage' | 'operator-history'
+    archiveEntries: [],    // loaded from /api/archive
+    archiveLoading: false,
+    archiveSortCol: 'apply.applied_at',
+    archiveSortDir: -1,    // -1 = desc, 1 = asc
+    archiveCopied: null,   // entity id that was just copied
+    archiveSearch: '',     // keyword search box
+    archiveFilterInstruction: '', // operator_input._parsed_operation dropdown filter
+    archiveDeleteId: null, // entity id pending delete confirmation
+
+    // Trial History state
+    trialEntries: [],
+    trialLoading: false,
+    trialSortCol: 'id',
+    trialSortDir: -1,
+    trialCopied: null,
+    trialDeleteId: null,
+    trialPromoteId: null,
+    trialPromoting: false,
+    trialPromoteResult: null, // { ok, output, error } after last promote
+    trialChartMetric: 'passing', // which column is plotted in the bar chart
+
     // -------------------------------------------------------------------------
     // Computed
     // -------------------------------------------------------------------------
@@ -185,6 +208,290 @@ function app() {
         const cfg = await res.json();
         if (cfg.destinations?.length) this.cfgDestinations = cfg.destinations;
       } catch { }
+    },
+
+    async loadArchive() {
+      this.archiveLoading = true;
+      try {
+        const res = await fetch('/api/archive');
+        this.archiveEntries = await res.json();
+      } catch { this.archiveEntries = []; }
+      this.archiveLoading = false;
+    },
+
+    get filteredArchiveEntries() {
+      let entries = this.archiveEntries;
+      // Keyword search across row values
+      const q = this.archiveSearch.trim().toLowerCase();
+      if (q) {
+        entries = entries.filter(e => [
+          e.id, e.envelope?.from, e.envelope?.date,
+          e.summary?.headline, e.summary?.description,
+          e.execution?.instruction, e.operator_input?.instruction,
+          e.recommendation?.operations, e.recommendation?.confidence,
+          e.recommendation?.journal_id, e.journal_meta?.confirmed_count,
+        ].some(v => v != null && String(v).toLowerCase().includes(q)));
+      }
+      // _parsed_operation dropdown filter
+      if (this.archiveFilterInstruction) {
+        entries = entries.filter(e =>
+          (e.operator_input?._parsed_operation ?? '') === this.archiveFilterInstruction
+        );
+      }
+      return entries;
+    },
+
+    get sortedArchiveEntries() {
+      const col = this.archiveSortCol;
+      const dir = this.archiveSortDir;
+      return [...this.filteredArchiveEntries].sort((a, b) => {
+        const av = this._archiveVal(a, col);
+        const bv = this._archiveVal(b, col);
+        if (av < bv) return -dir;
+        if (av > bv) return dir;
+        return 0;
+      });
+    },
+
+    get archiveInstructionOptions() {
+      const set = new Set();
+      this.archiveEntries.forEach(e => {
+        const v = e.operator_input?._parsed_operation;
+        if (v) set.add(v);
+      });
+      return [...set].sort();
+    },
+
+    get trialChartEntries() {
+      const metric = this.trialChartMetric;
+      return [...this.trialEntries]
+        .filter(t => this._trialChartVal(t, metric) != null)
+        .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    },
+
+    get maxTrialChartVal() {
+      const metric = this.trialChartMetric;
+      const vals = this.trialChartEntries.map(t => this._trialChartVal(t, metric));
+      return vals.length ? Math.max(...vals) : 1;
+    },
+
+    get trialChartLabel() {
+      const labels = { passing: 'Passing', total: 'Total', score: 'Score (%)', grade: 'Grade', duration: 'Duration (s)' };
+      return labels[this.trialChartMetric] ?? this.trialChartMetric;
+    },
+
+    _trialChartVal(trial, metric) {
+      switch (metric) {
+        case 'passing': return trial.passing;
+        case 'total': return trial.total;
+        case 'score': return trial.score;
+        case 'grade': {
+          if (trial.grade == null) return null;
+          const map = { 'A+': 13, A: 12, 'A-': 11, 'B+': 10, B: 9, 'B-': 8, 'C+': 7, C: 6, 'C-': 5, 'D+': 4, D: 3, 'D-': 2, F: 1 };
+          return map[trial.grade] ?? null;
+        }
+        case 'duration': return trial.duration_ms != null ? Math.round(trial.duration_ms / 1000) : null;
+        default: return null;
+      }
+    },
+
+    trialChartTooltip(trial) {
+      const metric = this.trialChartMetric;
+      const v = this._trialChartVal(trial, metric);
+      if (metric === 'duration') return `${trial.id}: ${this.durationRelative(trial.duration_ms)}`;
+      if (metric === 'grade') return `${trial.id}: ${trial.grade} (${v})`;
+      if (metric === 'score') return `${trial.id}: ${v}%`;
+      return `${trial.id}: ${v ?? '—'}`;
+    },
+
+    durationRelative(ms) {
+      if (ms == null) return '—';
+      const s = Math.round(ms / 1000);
+      if (s < 60) return `${s}s`;
+      const m = Math.floor(s / 60), rs = s % 60;
+      if (m < 60) return rs ? `${m}m ${rs}s` : `${m}m`;
+      const h = Math.floor(m / 60), rm = m % 60;
+      return rm ? `${h}h ${rm}m` : `${h}h`;
+    },
+
+    setTrialChartMetric(metric) { this.trialChartMetric = metric; },
+
+    get sortedTrialEntries() {
+      const col = this.trialSortCol;
+      const dir = this.trialSortDir;
+      return [...this.trialEntries].sort((a, b) => {
+        let av, bv;
+        switch (col) {
+          case 'id': av = String(a.id ?? ''); bv = String(b.id ?? ''); break;
+          case 'date': av = a.date ? new Date(a.date).getTime() : 0; bv = b.date ? new Date(b.date).getTime() : 0; break;
+          case 'passing': av = a.passing ?? 0; bv = b.passing ?? 0; break;
+          case 'total': av = a.total ?? 0; bv = b.total ?? 0; break;
+          case 'score': av = a.score ?? 0; bv = b.score ?? 0; break;
+          case 'grade': av = String(a.grade ?? ''); bv = String(b.grade ?? ''); break;
+          case 'duration': av = a.duration_ms ?? -1; bv = b.duration_ms ?? -1; break;
+          default: av = ''; bv = '';
+        }
+        if (av < bv) return -dir;
+        if (av > bv) return dir;
+        return 0;
+      });
+    },
+
+    trialSortBy(col) {
+      if (this.trialSortCol === col) {
+        this.trialSortDir = -this.trialSortDir;
+      } else {
+        this.trialSortCol = col;
+        this.trialSortDir = -1;
+      }
+    },
+
+    trialSortIcon(col) {
+      if (this.trialSortCol !== col) return '↕';
+      return this.trialSortDir === -1 ? '↓' : '↑';
+    },
+
+    trialGradeColor(grade) {
+      if (!grade) return 'text-gray-500';
+      const g = grade[0];
+      if (g === 'A') return 'text-green-400';
+      if (g === 'B') return 'text-blue-400';
+      if (g === 'C') return 'text-yellow-400';
+      if (g === 'D') return 'text-orange-400';
+      return 'text-red-400';
+    },
+
+    async loadTrials() {
+      this.trialLoading = true;
+      try {
+        const res = await fetch('/api/trials');
+        this.trialEntries = res.ok ? await res.json() : [];
+      } catch { this.trialEntries = []; }
+      this.trialLoading = false;
+    },
+
+    copyTrialId(id) {
+      navigator.clipboard.writeText(id).then(() => {
+        this.trialCopied = id;
+        setTimeout(() => { if (this.trialCopied === id) this.trialCopied = null; }, 1500);
+      });
+    },
+
+    confirmTrialDelete(id) { this.trialDeleteId = id; },
+    cancelTrialDelete() { this.trialDeleteId = null; },
+
+    async deleteTrialEntry() {
+      const id = this.trialDeleteId;
+      if (!id) return;
+      this.trialDeleteId = null;
+      try {
+        const res = await fetch(`/api/trials/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        if (res.ok) this.trialEntries = this.trialEntries.filter(e => e.id !== id);
+      } catch { }
+    },
+
+    confirmTrialPromote(id) { this.trialPromoteId = id; this.trialPromoteResult = null; },
+    cancelTrialPromote() { this.trialPromoteId = null; this.trialPromoteResult = null; },
+
+    async promoteTrialEntry() {
+      const id = this.trialPromoteId;
+      if (!id) return;
+      this.trialPromoting = true;
+      this.trialPromoteResult = null;
+      try {
+        const res = await fetch(`/api/trials/${encodeURIComponent(id)}/promote`, { method: 'POST' });
+        const data = await res.json();
+        this.trialPromoteResult = res.ok ? { ok: true, output: data.output } : { ok: false, error: data.error };
+      } catch (e) {
+        this.trialPromoteResult = { ok: false, error: e.message };
+      }
+      this.trialPromoting = false;
+      if (this.trialPromoteResult?.ok) {
+        // auto-close after success
+        setTimeout(() => { this.trialPromoteId = null; this.trialPromoteResult = null; }, 2000);
+      }
+    },
+
+    _archiveVal(entry, col) {
+      switch (col) {
+        case 'id': return String(entry.id ?? '');
+        case 'envelope.from': return String(entry.envelope?.from ?? '');
+        case 'apply.applied_at': return entry.apply?.applied_at ? new Date(entry.apply.applied_at).getTime() : 0;
+        case 'summary.headline': return String(entry.summary?.headline ?? '');
+        case 'summary.description': return String(entry.summary?.description ?? '');
+        case 'recommendation.journal_id': return parseFloat(entry.recommendation?.journal_id ?? -1);
+        case 'journal_meta.confirmed_count': return parseFloat(entry.journal_meta?.confirmed_count ?? -1);
+        case 'execution.instruction': return String(entry.execution?.instruction ?? '');
+        case 'recommendation.operations': return String(entry.recommendation?.operations ?? '');
+        case 'recommendation.confidence': return parseFloat(entry.recommendation?.confidence ?? 0);
+        default: return '';
+      }
+    },
+
+    archiveConfirmTooltip(entry) {
+      const ts = entry.journal_meta?.last_confirmed_ts;
+      if (!ts) return 'Never confirmed';
+      const abs = new Date(ts).toLocaleString();
+      const rel = this.relativeTime(ts);
+      return `Last confirmed: ${abs} (${rel})`;
+    },
+
+    archiveSortBy(col) {
+      if (this.archiveSortCol === col) {
+        this.archiveSortDir = -this.archiveSortDir;
+      } else {
+        this.archiveSortCol = col;
+        this.archiveSortDir = -1;
+      }
+    },
+
+    archiveSortIcon(col) {
+      if (this.archiveSortCol !== col) return '↕';
+      return this.archiveSortDir === -1 ? '↓' : '↑';
+    },
+
+    setView(v) {
+      this.view = v;
+      if (v === 'operator-history' && this.archiveEntries.length === 0) this.loadArchive();
+      if (v === 'trial-history' && this.trialEntries.length === 0) this.loadTrials();
+    },
+
+    relativeTime(iso) {
+      if (!iso) return '—';
+      const diff = Date.now() - new Date(iso).getTime();
+      const s = Math.round(diff / 1000);
+      if (s < 60) return `${s}s ago`;
+      const m = Math.round(s / 60);
+      if (m < 60) return `${m}m ago`;
+      const h = Math.round(m / 60);
+      if (h < 24) return `${h}h ago`;
+      const d = Math.round(h / 24);
+      if (d < 30) return `${d}d ago`;
+      const mo = Math.round(d / 30);
+      if (mo < 12) return `${mo}mo ago`;
+      return `${Math.round(mo / 12)}y ago`;
+    },
+
+    copyArchiveId(id) {
+      navigator.clipboard.writeText(id).then(() => {
+        this.archiveCopied = id;
+        setTimeout(() => { if (this.archiveCopied === id) this.archiveCopied = null; }, 1500);
+      });
+    },
+
+    confirmArchiveDelete(id) { this.archiveDeleteId = id; },
+    cancelArchiveDelete() { this.archiveDeleteId = null; },
+
+    async deleteArchiveEntry() {
+      const id = this.archiveDeleteId;
+      if (!id) return;
+      this.archiveDeleteId = null;
+      try {
+        const res = await fetch(`/api/archive/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        if (res.ok) {
+          this.archiveEntries = this.archiveEntries.filter(e => e.id !== id);
+        }
+      } catch { /* network error — silently ignore */ }
     },
 
     // -------------------------------------------------------------------------
