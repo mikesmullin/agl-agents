@@ -20,9 +20,9 @@ import { _G } from '../../lib/globals.coffee'
  → next run's trial_rationale → next run's journal entries.
 ###
 export seedJournalSystem = ->
-  entities = _G.World.Entity__find (e) -> e.content? and e.fingerprint? and e._trial?
+  entities = (_G.World.Entity__find (e) -> e.content? and e.fingerprint? and e._trial? and not e.journal_seeded?)[0..._G.pipelineWidth]
 
-  await Promise.all entities.map (entity) ->
+  for entity in entities
     _G.currentEntityId = entity.id
     { content, _trial } = entity
 
@@ -36,5 +36,6 @@ export seedJournalSystem = ->
     )
 
     await _G.saveJournalEntry _G.spawn, _G.DB_DIR, _G.MEMO_DB, journalEntry
+    await _G.Entity.patch entity, 'journal_seeded', true
 
     _G.log 'trial.seed-journal.entry', { id: entity.id, correctAnswer, rationale }

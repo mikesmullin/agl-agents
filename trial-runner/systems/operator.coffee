@@ -13,7 +13,7 @@ import { _G } from '../../lib/globals.coffee'
  Result is stored in entity.trial_result for use by the report system.
 ###
 export operatorSystem = ->
-  entities = _G.World.Entity__find (e) -> e.recommendation? and not e.trial_result?
+  entities = (_G.World.Entity__find (e) -> e.recommendation? and not e.trial_result?)[0..._G.pipelineWidth]
   for entity in entities
     _G.currentEntityId = entity.id
     { recommendation, _trial } = entity

@@ -1,7 +1,7 @@
 import { _G } from '../../lib/globals.coffee'
 
 export loadSystem = ->
-  entities = _G.World.Entity__find (e) -> not e.content?
+  entities = (_G.World.Entity__find (e) -> not e.content?)[0..._G.pipelineWidth]
   for entity in entities
     _G.currentEntityId = entity.id
     { emailText, envelope, summaryInput } = await _G.loadDecisionEmail entity.id

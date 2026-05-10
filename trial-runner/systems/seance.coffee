@@ -27,9 +27,10 @@ MAX_SEANCE_ITERATIONS = 10
    attempts                     – array of { rationale, got } for failed iterations
 ###
 export seanceSystem = ->
-  entities = _G.World.Entity__find (e) ->
+  entities = (_G.World.Entity__find (e) ->
     e.trial_result? and not e.trial_result.passed and
     e.retrospective?.stage_6_context? and not e.seance?
+  )[0..._G.pipelineWidth]
 
   for entity in entities
     _G.currentEntityId = entity.id

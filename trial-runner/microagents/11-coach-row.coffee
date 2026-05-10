@@ -12,7 +12,7 @@ import { _G } from '../../lib/globals.coffee'
 _G.coachRowMicroagent = (entityId, given, correct, trialRationale, originalRationale, seanceExplanation) ->
   _G.traceStep '🎓', "Coach row #{entityId}", ->
     microagent = await Agent.factory
-      model: 'copilot:claude-sonnet-4.6'
+      model: _G.MODEL  # 'copilot:claude-sonnet-4.6'
       system_prompt: """
         You are a coach improving an AI email triage agent's recommendation accuracy.
         For each email entity you receive the agent's answer, the correct answer, and

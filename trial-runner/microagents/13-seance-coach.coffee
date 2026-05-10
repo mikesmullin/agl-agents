@@ -15,7 +15,7 @@ import { _G } from '../../lib/globals.coffee'
 _G.seanceCoachMicroagent = (emailText, correctAnswer, trialRationale, previousAttempts, existingMessages) ->
   _G.traceStep '🔄', 'Seance coach proposing rationale', ->
     microagent = await Agent.factory
-      model: 'copilot:claude-sonnet-4.6'
+      model: _G.MODEL  # 'copilot:claude-sonnet-4.6'
       system_prompt: """
         You are a coach refining a one-to-three sentence rationale that will be
         injected as journal context into an email triage agent's recommend stage.

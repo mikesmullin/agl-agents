@@ -60,9 +60,14 @@ export setupSystem = ->
     break  # only need the most recent completed run
 
   # ------------------------------------------------------------------
-  # Create new trial run folder
+  # Create new trial run folder (max existing ID + 1, not count, so deleted
+  # trial folders don't cause ID reuse)
   # ------------------------------------------------------------------
-  runId = String(existingRuns.length + 1).padStart 3, '0'
+  maxId = existingRuns.reduce ((m, d) ->
+    n = parseInt d, 10
+    if isNaN(n) then m else Math.max(m, n)
+  ), 0
+  runId = String(maxId + 1).padStart 3, '0'
   trialDir = resolve TRIAL_BASE, runId
   trialEntityDir = resolve trialDir, 'entities'
   await mkdir trialEntityDir, { recursive: true }

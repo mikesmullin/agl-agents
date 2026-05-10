@@ -30,6 +30,7 @@ import { seedJournalSystem } from './systems/seed-journal.coffee'
 import { operatorSystem } from './systems/operator.coffee'
 import { seanceSystem } from './systems/seance.coffee'
 import { reportSystem } from './systems/report.coffee'
+import { coachSystem } from './systems/coach.coffee'
 import { commitDbSystem, promoteFromRunId } from './systems/commit-db.coffee'
 
 # Real recall from personal-email (hybrid vector+keyword+sender search)
@@ -87,6 +88,7 @@ if entitiesCreated is 0
   console.error 'No eligible entities found in personal-email/db/_archive/ (need operator_input.source=proceed or operator.command=proceed).'
   process.exit 1
 
+# Trial runs a single linear pass over all entities — lift the per-stage width cap
 # Point entity model at trial entity dir before init
 _G.ENTITY_DIR = trialEntityDir
 _G.ARCHIVE_DIR = trialDir  # unused in trial pipeline but required by Entity.archive
@@ -103,24 +105,30 @@ try
 catch
   # Non-fatal; valid-move-destinations will show "(none loaded)" in prompt
 
-console.log "\n🧪 Trial run #{runId} — #{entitiesCreated} entities\n"
+console.log "\n🧪 Trial run #{runId} — #{entitiesCreated} entities (batch size: #{_G.pipelineWidth})\n"
 
 # ---------------------------------------------------------------------------
-# Run the pipeline once (no loop — each trial run is a single pass)
+# Run the pipeline in batches of _G.pipelineWidth entities at a time.
+# Each batch goes through the full pipeline before the next batch starts.
+# Each system naturally picks the next unprocessed slice via [0..._G.pipelineWidth].
 # ---------------------------------------------------------------------------
 
-await pageSystem()          # no-op
-await loadSystem()          # parse origin.raw via mocked spawn
-await fingerprintSystem()   # real LLM inference
-await seedJournalSystem()   # write trial_rationale as structured journal entries to _G.MEMO_DB
-await recallSystem()        # real hybrid recall against the trial journal
-await summarizeSystem()     # real LLM inference
-await recommendSystem()     # real LLM inference + captures retrospective context
-await displaySystem()       # deterministic log
-await operatorSystem()      # pass/fail gate: compare recommendation vs correct answer
+await pageSystem()   # no-op
 
-# Seance: for failed entities, replay context window to get introspective explanation
-await seanceSystem()
+loop
+  unloaded  = (_G.World.Entity__find (e) -> not e.content?).length
+  remaining = (_G.World.Entity__find (e) -> e.content? and not e.trial_result?).length
+  break unless unloaded > 0 or remaining > 0
+  await loadSystem()          # parse next batch of origin.raw via mocked spawn
+  await fingerprintSystem()   # real LLM inference
+  await seedJournalSystem()   # write trial_rationale as structured journal entries to _G.MEMO_DB
+  await recallSystem()        # real hybrid recall against the trial journal
+  await summarizeSystem()     # real LLM inference
+  await recommendSystem()     # real LLM inference + captures retrospective context
+  await displaySystem()       # deterministic log
+  await operatorSystem()      # pass/fail gate: compare recommendation vs correct answer
+  await seanceSystem()        # for failed entities: iterative coaching loop to find working rationale
+  await coachSystem()         # finalise backprop_rationale + write corrected journal entry to MEMO_DB
 
 # Coach: generate per-row feedback + backprop rationale, write report card
 result = await reportSystem trialDir, runId
