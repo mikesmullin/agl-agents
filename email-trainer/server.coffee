@@ -4,6 +4,7 @@
 import { load as yamlLoad, loadAll as yamlLoadAll, dump as yamlDump } from 'js-yaml'
 import { readFileSync, writeFileSync, readdirSync, statSync, existsSync, mkdirSync, unlinkSync, rmSync } from 'fs'
 import { resolve, extname } from 'path'
+import { readFile } from 'fs/promises'
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -383,6 +384,102 @@ handleAPI = (req, url) ->
       else
         return new Response JSON.stringify(error: stderr or stdout, exitCode: result.exitCode),
           status: 500, headers: { 'Content-Type': 'application/json' }
+    catch e
+      return new Response JSON.stringify(error: e.message),
+        status: 500, headers: { 'Content-Type': 'application/json' }
+
+  # ---------------------------------------------------------------------------
+  # Trial-run control API
+  # ---------------------------------------------------------------------------
+  LOCK_PATH  = resolve ENTITIES_DIR, '../_archive/trial/running.lock'
+  AGENT_ROOT = resolve __dir, '..'
+
+  _isProcessRunning = (pid) ->
+    try
+      process.kill pid, 0
+      true
+    catch
+      false
+
+  _readLock = ->
+    return null unless existsSync LOCK_PATH
+    try
+      data = JSON.parse readFileSync LOCK_PATH, 'utf8'
+      alive = _isProcessRunning data.pid
+      { ...data, alive }
+    catch
+      null
+
+  # GET /api/trial-run/status — returns lock state + latest progress.yaml
+  if method is 'GET' and pathname is '/api/trial-run/status'
+    lock = _readLock()
+    # Stale lock: process is dead
+    if lock and not lock.alive
+      try unlinkSync LOCK_PATH catch
+      lock = null
+    progressData = null
+    TRIAL_BASE_DIR = resolve ENTITIES_DIR, '../_archive/trial'
+    # Load progress.yaml: prefer live run's folder, fall back to most recent trial folder
+    tryRunId = lock?.run_id
+    if not tryRunId
+      try
+        entries = readdirSync(TRIAL_BASE_DIR).filter (name) ->
+          try statSync(resolve(TRIAL_BASE_DIR, name)).isDirectory() catch then false
+        entries.sort()
+        tryRunId = entries[entries.length - 1] if entries.length > 0
+      catch
+    if tryRunId
+      pPath = resolve TRIAL_BASE_DIR, tryRunId, 'progress.yaml'
+      try
+        progressData = yamlLoad readFileSync pPath, 'utf8'
+      catch
+    return new Response JSON.stringify({ running: lock?, lock, progress: progressData }),
+      headers: { 'Content-Type': 'application/json' }
+
+  # POST /api/trial-run/start — spawn trial-runner as a background process
+  if method is 'POST' and pathname is '/api/trial-run/start'
+    lock = _readLock()
+    if lock?.alive
+      return new Response JSON.stringify(error: "Trial run #{lock.run_id} already running (pid #{lock.pid})"),
+        status: 409, headers: { 'Content-Type': 'application/json' }
+    # Parse optional --from-id from request body
+    body = {}
+    try body = await req.json() catch
+    flags = ['trial-runner/agent.coffee']
+    if body.fromId and /^[a-zA-Z0-9]+$/.test body.fromId
+      flags.push '--from-id', body.fromId
+    try
+      proc = Bun.spawn ['bun', ...flags],
+        cwd: AGENT_ROOT
+        stdout: 'pipe'
+        stderr: 'pipe'
+      # Drain output streams so the spawned process doesn't block on a full pipe buffer
+      proc.stdout?.pipeTo?(new WritableStream({ write: -> })).catch(->) ? proc.stdout?.cancel?()
+      proc.stderr?.pipeTo?(new WritableStream({ write: -> })).catch(->) ? proc.stderr?.cancel?()
+      # Write lock file immediately so GET /status sees the running state before
+      # the agent has had time to write it itself.
+      try
+        writeFileSync LOCK_PATH,
+          JSON.stringify({ pid: proc.pid, run_id: null, started_at: new Date().toISOString() })
+      catch
+      return new Response JSON.stringify(ok: true, pid: proc.pid),
+        headers: { 'Content-Type': 'application/json' }
+    catch e
+      return new Response JSON.stringify(error: e.message),
+        status: 500, headers: { 'Content-Type': 'application/json' }
+
+  # POST /api/trial-run/stop — send SIGTERM to the running trial
+  if method is 'POST' and pathname is '/api/trial-run/stop'
+    lock = _readLock()
+    unless lock?.alive
+      try unlinkSync LOCK_PATH catch
+      return new Response JSON.stringify(ok: true, note: 'no running trial found'),
+        headers: { 'Content-Type': 'application/json' }
+    try
+      process.kill lock.pid, 'SIGTERM'
+      try unlinkSync LOCK_PATH catch
+      return new Response JSON.stringify(ok: true, stopped_pid: lock.pid),
+        headers: { 'Content-Type': 'application/json' }
     catch e
       return new Response JSON.stringify(error: e.message),
         status: 500, headers: { 'Content-Type': 'application/json' }

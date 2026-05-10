@@ -11,30 +11,35 @@ import '../lib/memo.coffee'
 import '../lib/recall.coffee'
 import '../lib/async.coffee'
 import { resolve } from 'path'
+import { writeFile, unlink } from 'fs/promises'
+import {
+  markRoundStart, markRoundEnd, incrementRoundCount,
+  recordCoachAdvice, writeProgressFile
+} from './systems/progress.coffee'
 
 # Reuse personal-email models (entity dir is overridden below before init)
 import '../personal-email/models/world.coffee'
 import '../personal-email/models/entity.coffee'
 
-# Reuse personal-email inference systems (fingerprint, summarize, recommend, display)
-import { loadSystem } from '../personal-email/systems/load.coffee'
-import { fingerprintSystem } from '../personal-email/systems/fingerprint.coffee'
-import { summarizeSystem } from '../personal-email/systems/summarize.coffee'
+# Reuse personal-email inference systems
+# - loadSystem:             SKIP — trial entities already have content/envelope from archive
+# - fingerprintSystem:      SKIP — trial entities already have fingerprint from archive
+# - recallJournalSystem:    RUN  — core trial task: can the system recall the right journal entry?
+# - recallPresentationSystem: SKIP — trial entities already have presentation recall from archive
+# - summarizeSystem:        SKIP — trial entities already have summary from archive
+# - recommendSystem:        RUN  — core trial task: does recall produce the right recommendation?
+# - displaySystem:          SKIP — offline/training mode; display output is not used
+import { recallJournalSystem } from '../personal-email/systems/recall.coffee'
 import { recommendSystem } from '../personal-email/systems/recommend.coffee'
-import { displaySystem } from '../personal-email/systems/display.coffee'
 
 # Trial-specific systems
 import { setupSystem } from './systems/setup.coffee'
 import { pageSystem } from './systems/page.coffee'
-import { seedJournalSystem } from './systems/seed-journal.coffee'
 import { operatorSystem } from './systems/operator.coffee'
 import { seanceSystem } from './systems/seance.coffee'
 import { reportSystem } from './systems/report.coffee'
 import { coachSystem } from './systems/coach.coffee'
 import { commitDbSystem, promoteFromRunId } from './systems/commit-db.coffee'
-
-# Real recall from personal-email (hybrid vector+keyword+sender search)
-import { recallSystem } from '../personal-email/systems/recall.coffee'
 
 Agent.default.model = _G.MODEL
 
@@ -48,6 +53,15 @@ promoteRunId = if promoteIdx >= 0 then (process.argv[promoteIdx + 1] or '').trim
 if promoteRunId
   await promoteFromRunId promoteRunId
   process.exit 0
+
+# ---------------------------------------------------------------------------
+# --from-id <id>: focus the trial run on a single entity (for debugging a
+# validation failure).  All other entities are removed from World before the
+# pipeline starts, giving a clean single-entity trial run.
+# ---------------------------------------------------------------------------
+
+fromIdIdx = process.argv.indexOf '--from-id'
+fromId = if fromIdIdx >= 0 then (process.argv[fromIdIdx + 1] or '').trim() or null else null
 
 # ---------------------------------------------------------------------------
 # Trial-mode spawn mock
@@ -88,7 +102,6 @@ if entitiesCreated is 0
   console.error 'No eligible entities found in personal-email/db/_archive/ (need operator_input.source=proceed or operator.command=proceed).'
   process.exit 1
 
-# Trial runs a single linear pass over all entities — lift the per-stage width cap
 # Point entity model at trial entity dir before init
 _G.ENTITY_DIR = trialEntityDir
 _G.ARCHIVE_DIR = trialDir  # unused in trial pipeline but required by Entity.archive
@@ -99,36 +112,109 @@ _G.DB_DIR   = trialDir  # temp files written here during saveJournalEntry
 
 await _G.Entity.init()
 
+# Apply --from-id filter: keep only the specified entity in World
+if fromId
+  allEntities = _G.World.Entity__find -> true
+  _G.World.remove entity.id for entity in allEntities when entity.id isnt fromId
+  remaining = _G.World.Entity__find -> true
+  if remaining.length is 0
+    console.error "No entity found with id #{JSON.stringify fromId} in #{trialEntityDir}"
+    process.exit 1
+  console.log "\n🔍 --from-id #{fromId}: focusing on 1 entity\n"
+
 # Load move-folder cache (read-only call; passes through mock to real google-email)
 try
   await _G.loadMoveFolderCacheLib()
 catch
   # Non-fatal; valid-move-destinations will show "(none loaded)" in prompt
 
-console.log "\n🧪 Trial run #{runId} — #{entitiesCreated} entities (batch size: #{_G.pipelineWidth})\n"
+totalEntities = (_G.World.Entity__find -> true).length
+# ---------------------------------------------------------------------------
+# Lock file — lets email-trainer UI detect a running trial
+# ---------------------------------------------------------------------------
+LOCK_PATH = resolve process.cwd(), 'personal-email/db/_archive/trial/running.lock'
+startedAt = new Date().toISOString()
+
+try
+  await writeFile LOCK_PATH,
+    JSON.stringify({ pid: process.pid, run_id: runId, started_at: startedAt }),
+    'utf8'
+catch
+  # Non-fatal; lock file is best-effort
+
+_cleanupLock = ->
+  try require('fs').unlinkSync LOCK_PATH catch
+
+process.on 'exit',    _cleanupLock
+process.on 'SIGTERM', -> process.exit 0
+process.on 'SIGINT',  -> process.exit 0
+
+console.log "\n🧪 Trial run #{runId} — #{totalEntities} entities\n"
 
 # ---------------------------------------------------------------------------
-# Run the pipeline in batches of _G.pipelineWidth entities at a time.
-# Each batch goes through the full pipeline before the next batch starts.
-# Each system naturally picks the next unprocessed slice via [0..._G.pipelineWidth].
+# Main loop
+#
+# Flow per entity (each iteration of the outer loop processes one batch):
+#
+#   recallJournalSystem → recommendSystem → operatorSystem
+#     → if PASS: coachSystem marks it done
+#     → if FAIL: seanceSystem + coachSystem + entity reset → loops back to recall
+#
+# The loop exits only when every entity has trial_result.passed = true and
+# has been coached.  Failed entities are reset (recall.journalContext cleared,
+# pipeline components cleared) so they cycle back through recall→recommend.
+# The operator can Ctrl+C at any time; reportSystem is called after clean exit.
+#
+# Note: the trial journal (MEMO_DB) starts empty each run.  coachSystem writes
+# corrected journal entries after each batch, so later batches (and retry cycles)
+# benefit from earlier coaching.
 # ---------------------------------------------------------------------------
 
-await pageSystem()   # no-op
+await pageSystem()   # no-op in trial mode
 
 loop
-  unloaded  = (_G.World.Entity__find (e) -> not e.content?).length
-  remaining = (_G.World.Entity__find (e) -> e.content? and not e.trial_result?).length
-  break unless unloaded > 0 or remaining > 0
-  await loadSystem()          # parse next batch of origin.raw via mocked spawn
-  await fingerprintSystem()   # real LLM inference
-  await seedJournalSystem()   # write trial_rationale as structured journal entries to _G.MEMO_DB
-  await recallSystem()        # real hybrid recall against the trial journal
-  await summarizeSystem()     # real LLM inference
-  await recommendSystem()     # real LLM inference + captures retrospective context
-  await displaySystem()       # deterministic log
-  await operatorSystem()      # pass/fail gate: compare recommendation vs correct answer
-  await seanceSystem()        # for failed entities: iterative coaching loop to find working rationale
-  await coachSystem()         # finalise backprop_rationale + write corrected journal entry to MEMO_DB
+  # Mark round starts for entities about to enter recall this iteration.
+  # Only entities without journalContext and not already decided.
+  for entity in _G.World.Entity__find((e) -> not e.recall?.journalContext? and not e.trial_result?)
+    markRoundStart entity.id
+
+  await recallJournalSystem()
+  await recommendSystem()
+  await operatorSystem()
+
+  # Mark round ends for entities that just received a trial_result.
+  for entity in _G.World.Entity__find((e) -> e.trial_result? and not e.coached?)
+    markRoundEnd entity.id
+
+  await seanceSystem()
+  await coachSystem()
+
+  # Record coach advice + increment round counts for failed entities.
+  for entity in _G.World.Entity__find((e) -> e.coached? and not e.trial_result?.passed)
+    recordCoachAdvice entity.id, false, entity.coached?.feedback, entity._trial?.backprop_rationale
+    incrementRoundCount entity.id
+  # Also record pass outcomes
+  for entity in _G.World.Entity__find((e) -> e.coached? and e.trial_result?.passed)
+    recordCoachAdvice entity.id, true, null, null
+
+  # Write progress snapshot.
+  await writeProgressFile trialDir, runId, startedAt
+
+  # Reset failed entities so they cycle back through recallJournalSystem with
+  # the updated journal written by coachSystem.
+  failedCoached = _G.World.Entity__find (e) -> e.coached? and not e.trial_result?.passed
+  for entity in failedCoached
+    # Preserve recall.presentationCandidate + usePresentationPreferences; drop journalContext
+    recallRest = { ...(entity.recall or {}) }
+    delete recallRest.journalContext
+    cleared = await _G.Entity.clearComponents entity,
+      ['retrospective', 'recommendation', 'trial_result', 'seance', 'coached', 'traces']
+    await _G.Entity.patch cleared, 'recall', recallRest
+
+  # Break when all entities have passed and been coached
+  total  = (_G.World.Entity__find -> true).length
+  passed = (_G.World.Entity__find (e) -> e.trial_result?.passed and e.coached?).length
+  break if passed is total
 
 # Coach: generate per-row feedback + backprop rationale, write report card
 result = await reportSystem trialDir, runId

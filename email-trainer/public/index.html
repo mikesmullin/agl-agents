@@ -123,6 +123,15 @@
           <span class="text-sm">🧪</span>
           <span class="sidebar-label text-sm text-gray-300">Trial History</span>
         </button>
+        <button @click="setView('trial-run'); filter = null"
+          class="w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors hover:bg-gray-800"
+          :class="{ 'bg-gray-800': view === 'trial-run' }">
+          <span class="text-sm">🏃</span>
+          <span class="sidebar-label text-sm text-gray-300">Trial Run</span>
+          <template x-if="trialRunStatus.running">
+            <span class="ml-auto w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+          </template>
+        </button>
       </nav>
 
       <!-- Footer stats + hotkey hints -->
@@ -1071,6 +1080,251 @@
               </div>
             </div>
           </div>
+        </template>
+      </div>
+
+      <!-- ================================================================
+           Trial Run (live dashboard)
+           ================================================================ -->
+      <div class="flex-1 overflow-auto px-6 py-6" x-show="view === 'trial-run'"
+        x-init="if(view==='trial-run') loadTrialRunStatus()">
+        <h2 class="text-lg font-bold text-white mb-4">🏃 Trial Run</h2>
+
+        <!-- Error banner -->
+        <template x-if="trialRunError">
+          <div
+            class="mb-4 px-4 py-2 rounded-lg bg-red-900/50 border border-red-700 text-red-300 text-sm flex items-center justify-between">
+            <span x-text="trialRunError"></span>
+            <button @click="trialRunError = null" class="ml-3 text-red-400 hover:text-red-200">✕</button>
+          </div>
+        </template>
+
+        <!-- Status bar + controls -->
+        <div class="mb-5 flex items-center gap-3 flex-wrap">
+          <!-- Status pill -->
+          <template x-if="trialRunStatus.running">
+            <span
+              class="flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-900/60 border border-green-700 text-green-300 text-xs font-semibold">
+              <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+              Running — run <span class="font-mono ml-1" x-text="trialRunStatus.lock?.run_id ?? '?'"></span>
+              &nbsp;· pid <span class="font-mono" x-text="trialRunStatus.lock?.pid ?? '?'"></span>
+            </span>
+          </template>
+          <template x-if="!trialRunStatus.running">
+            <span
+              class="flex items-center gap-1.5 px-3 py-1 rounded-full bg-gray-800 border border-gray-700 text-gray-400 text-xs">
+              <span class="w-2 h-2 rounded-full bg-gray-600"></span>
+              Idle
+            </span>
+          </template>
+
+          <!-- Elapsed / ETA -->
+          <template x-if="trialRunStatus.running">
+            <span class="text-xs text-gray-500">
+              Elapsed: <span class="text-gray-300 font-mono" x-text="trialRunElapsed()"></span>
+              &nbsp;· ETA: <span class="text-gray-300 font-mono" x-text="trialRunEta()"></span>
+            </span>
+          </template>
+
+          <!-- Action buttons -->
+          <div class="ml-auto flex items-center gap-2">
+            <!-- from-id input (only when idle) -->
+            <template x-if="!trialRunStatus.running">
+              <input x-model="trialRunFromId" type="text" placeholder="--from-id (optional)"
+                class="px-2 py-1 text-xs rounded bg-gray-800 border border-gray-700 text-gray-300 placeholder-gray-600 font-mono w-44" />
+            </template>
+            <button @click="loadTrialRunStatus()" :disabled="trialRunLoading"
+              class="px-3 py-1.5 text-xs rounded bg-gray-800 border border-gray-700 text-gray-300 hover:bg-gray-700 transition-colors disabled:opacity-50"
+              title="Refresh status">
+              ↻
+            </button>
+            <template x-if="!trialRunStatus.running">
+              <button @click="startTrialRun()" :disabled="trialRunStarting"
+                class="px-4 py-1.5 text-xs rounded bg-indigo-900 border border-indigo-700 text-indigo-200 hover:bg-indigo-800 transition-colors font-semibold disabled:opacity-50 flex items-center gap-1.5">
+                <template x-if="trialRunStarting"><span>Starting…</span></template>
+                <template x-if="!trialRunStarting"><span>▶ Start</span></template>
+              </button>
+            </template>
+            <template x-if="trialRunStatus.running">
+              <button @click="stopTrialRun()" :disabled="trialRunStopping"
+                class="px-4 py-1.5 text-xs rounded bg-red-900 border border-red-700 text-red-200 hover:bg-red-800 transition-colors font-semibold disabled:opacity-50 flex items-center gap-1.5">
+                <template x-if="trialRunStopping"><span>Stopping…</span></template>
+                <template x-if="!trialRunStopping"><span>■ Stop</span></template>
+              </button>
+            </template>
+          </div>
+        </div>
+
+        <!-- Progress metrics grid -->
+        <template x-if="trialRunStatus.progress">
+          <div>
+            <!-- Last-run badge when not currently live -->
+            <template x-if="!trialRunStatus.running">
+              <div class="mb-3 flex items-center gap-2">
+                <span class="px-2 py-0.5 rounded text-xs bg-gray-800 border border-gray-700 text-gray-500 font-mono">
+                  Last run: <span x-text="trialRunStatus.progress?.run_id ?? '—'"></span>
+                </span>
+                <span class="text-xs text-gray-600" x-text="relativeTime(trialRunStatus.progress?.updated_at)"></span>
+              </div>
+            </template>
+            <!-- Summary cards -->
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+
+              <!-- Total / Processed / In-Flight -->
+              <div class="bg-gray-900/60 border border-gray-800 rounded-lg px-4 py-3">
+                <div class="text-xs text-gray-500 uppercase tracking-wide mb-2">Progress</div>
+                <div class="flex items-end gap-3">
+                  <div>
+                    <div class="text-2xl font-bold text-white font-mono" x-text="trialRunMetric('summary.processed')">
+                    </div>
+                    <div class="text-xs text-gray-500">processed</div>
+                  </div>
+                  <div class="text-gray-700 text-xl">/</div>
+                  <div>
+                    <div class="text-xl font-semibold text-gray-400 font-mono" x-text="trialRunMetric('summary.total')">
+                    </div>
+                    <div class="text-xs text-gray-600">total</div>
+                  </div>
+                  <div class="ml-auto text-right">
+                    <div class="text-sm text-blue-400 font-mono" x-text="trialRunMetric('summary.in_flight')"></div>
+                    <div class="text-xs text-gray-600">in-flight</div>
+                  </div>
+                </div>
+                <!-- Mini progress bar -->
+                <div class="mt-2 rounded-full overflow-hidden h-1.5 bg-gray-800">
+                  <div class="h-full bg-indigo-600 transition-all duration-500 rounded-full"
+                    :style="{ width: (trialRunStatus.progress?.summary?.total > 0 ? (trialRunStatus.progress.summary.processed / trialRunStatus.progress.summary.total * 100) : 0) + '%' }">
+                  </div>
+                </div>
+              </div>
+
+              <!-- Passed / Failed / Pass Rate -->
+              <div class="bg-gray-900/60 border border-gray-800 rounded-lg px-4 py-3">
+                <div class="text-xs text-gray-500 uppercase tracking-wide mb-2">Results</div>
+                <div class="flex items-end gap-3">
+                  <div>
+                    <div class="text-2xl font-bold text-green-400 font-mono" x-text="trialRunMetric('summary.passed')">
+                    </div>
+                    <div class="text-xs text-gray-500">passed</div>
+                  </div>
+                  <div>
+                    <div class="text-xl font-semibold text-red-400 font-mono" x-text="trialRunMetric('summary.failed')">
+                    </div>
+                    <div class="text-xs text-gray-600">failed</div>
+                  </div>
+                  <div class="ml-auto text-right">
+                    <div class="text-lg font-bold font-mono"
+                      :class="(trialRunStatus.progress?.summary?.pass_rate ?? 0) >= 80 ? 'text-green-400' : (trialRunStatus.progress?.summary?.pass_rate ?? 0) >= 60 ? 'text-yellow-400' : 'text-red-400'"
+                      x-text="(trialRunMetric('summary.pass_rate') !== '—' ? trialRunMetric('summary.pass_rate') + '%' : '—')">
+                    </div>
+                    <div class="text-xs text-gray-600">pass rate</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Coach stats -->
+              <div class="bg-gray-900/60 border border-gray-800 rounded-lg px-4 py-3">
+                <div class="text-xs text-gray-500 uppercase tracking-wide mb-2">Coaching</div>
+                <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                  <div class="text-gray-500">First-try pass</div>
+                  <div class="text-right font-mono text-gray-300" x-text="trialRunMetric('coach_stats.first_try_pass')">
+                  </div>
+                  <div class="text-gray-500">Needed coaching</div>
+                  <div class="text-right font-mono text-gray-300"
+                    x-text="trialRunMetric('coach_stats.emails_needing_coaching')"></div>
+                  <div class="text-gray-500">Rounds min/max</div>
+                  <div class="text-right font-mono text-gray-300"
+                    x-text="(trialRunMetric('coach_stats.rounds_min') !== '—' ? trialRunMetric('coach_stats.rounds_min') + ' / ' + trialRunMetric('coach_stats.rounds_max') : '—')">
+                  </div>
+                  <div class="text-gray-500">Mean rounds</div>
+                  <div class="text-right font-mono text-gray-300" x-text="trialRunMetric('coach_stats.rounds_mean')">
+                  </div>
+                </div>
+              </div>
+
+              <!-- Round timing -->
+              <div class="bg-gray-900/60 border border-gray-800 rounded-lg px-4 py-3">
+                <div class="text-xs text-gray-500 uppercase tracking-wide mb-2">Round Timing</div>
+                <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                  <div class="text-gray-500">Min</div>
+                  <div class="text-right font-mono text-gray-300"
+                    x-text="trialRunStatus.progress?.timing?.round_ms_min != null ? durationRelative(trialRunStatus.progress.timing.round_ms_min) : '—'">
+                  </div>
+                  <div class="text-gray-500">Max</div>
+                  <div class="text-right font-mono text-gray-300"
+                    x-text="trialRunStatus.progress?.timing?.round_ms_max != null ? durationRelative(trialRunStatus.progress.timing.round_ms_max) : '—'">
+                  </div>
+                  <div class="text-gray-500">Mean</div>
+                  <div class="text-right font-mono text-gray-300"
+                    x-text="trialRunStatus.progress?.timing?.round_ms_mean != null ? durationRelative(trialRunStatus.progress.timing.round_ms_mean) : '—'">
+                  </div>
+                </div>
+              </div>
+
+              <!-- ETA -->
+              <div class="bg-gray-900/60 border border-gray-800 rounded-lg px-4 py-3">
+                <div class="text-xs text-gray-500 uppercase tracking-wide mb-2">ETA</div>
+                <div class="text-lg font-semibold text-gray-300 font-mono" x-text="trialRunEta()"></div>
+                <div class="text-xs text-gray-600 mt-0.5">estimated completion</div>
+                <div class="mt-2 text-xs text-gray-500">
+                  Elapsed: <span class="font-mono text-gray-400" x-text="trialRunElapsed()"></span>
+                </div>
+              </div>
+
+              <!-- Updated-at -->
+              <div class="bg-gray-900/60 border border-gray-800 rounded-lg px-4 py-3">
+                <div class="text-xs text-gray-500 uppercase tracking-wide mb-2">Last Update</div>
+                <div class="text-sm text-gray-400" x-text="relativeTime(trialRunStatus.progress?.updated_at)"></div>
+                <div class="text-xs text-gray-600 mt-0.5 font-mono truncate"
+                  x-text="trialRunStatus.progress?.updated_at ?? '—'"></div>
+                <div class="mt-2 text-xs text-gray-600">
+                  Run: <span class="font-mono text-gray-500" x-text="trialRunStatus.progress?.run_id ?? '—'"></span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Recent coach log -->
+            <template x-if="trialRunStatus.progress?.recent_coach_log?.length > 0">
+              <div>
+                <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-2">Recent Coach Log</h3>
+                <div class="overflow-x-auto rounded-lg border border-gray-800">
+                  <table class="w-full text-xs text-gray-300 border-collapse">
+                    <thead>
+                      <tr class="bg-gray-800/80 text-gray-400 uppercase tracking-wide text-xs">
+                        <th class="px-3 py-2 text-left">ID</th>
+                        <th class="px-3 py-2 text-left">Time</th>
+                        <th class="px-3 py-2 text-left">Result</th>
+                        <th class="px-3 py-2 text-left">Rounds</th>
+                        <th class="px-3 py-2 text-left">Advice</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <template x-for="(entry, i) in trialRunStatus.progress.recent_coach_log" :key="i">
+                        <tr class="border-t border-gray-800 hover:bg-gray-800/30 transition-colors">
+                          <td class="px-3 py-2 font-mono text-gray-500" x-text="entry.id ?? '—'"></td>
+                          <td class="px-3 py-2 text-gray-500 whitespace-nowrap" x-text="relativeTime(entry.at)"></td>
+                          <td class="px-3 py-2 whitespace-nowrap font-semibold"
+                            :class="entry.passed ? 'text-green-400' : 'text-yellow-400'"
+                            x-text="entry.passed ? '✓ pass' : '⟳ coaching'"></td>
+                          <td class="px-3 py-2 font-mono text-center text-gray-400" x-text="entry.rounds ?? '—'"></td>
+                          <td class="px-3 py-2 text-gray-400 max-w-xs truncate" :title="entry.advice ?? ''"
+                            x-text="entry.advice ?? (entry.passed ? '—' : 'see logs')"></td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </template>
+          </div>
+        </template>
+
+        <!-- Empty state when no progress file exists at all -->
+        <template x-if="!trialRunStatus.progress && !trialRunStatus.running">
+          <div class="text-gray-600 text-sm mt-6">No trial runs found. Press ▶ Start to begin.</div>
+        </template>
+        <template x-if="!trialRunStatus.progress && trialRunStatus.running">
+          <div class="text-gray-500 text-sm mt-6 animate-pulse">Waiting for first progress update…</div>
         </template>
       </div>
   </div>

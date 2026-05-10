@@ -116,7 +116,7 @@ function app() {
     slots: Array.from({ length: 10 }, () => ({ entityId: null })),  // fixed 10-slot display window
 
     // Training section state
-    view: 'triage',        // 'triage' | 'operator-history'
+    view: 'triage',        // 'triage' | 'operator-history' | 'trial-history' | 'trial-run'
     archiveEntries: [],    // loaded from /api/archive
     archiveLoading: false,
     archiveSortCol: 'apply.applied_at',
@@ -137,6 +137,15 @@ function app() {
     trialPromoting: false,
     trialPromoteResult: null, // { ok, output, error } after last promote
     trialChartMetric: 'passing', // which column is plotted in the bar chart
+
+    // Trial Run state
+    trialRunStatus: { running: false, lock: null, progress: null },
+    trialRunLoading: false,
+    trialRunStarting: false,
+    trialRunStopping: false,
+    trialRunPollInterval: null,
+    trialRunFromId: '',
+    trialRunError: null,
 
     // -------------------------------------------------------------------------
     // Computed
@@ -412,6 +421,86 @@ function app() {
       }
     },
 
+    // -------------------------------------------------------------------------
+    // Trial Run methods
+    // -------------------------------------------------------------------------
+    async loadTrialRunStatus() {
+      this.trialRunLoading = true;
+      try {
+        const res = await fetch('/api/trial-run/status');
+        if (res.ok) this.trialRunStatus = await res.json();
+      } catch { }
+      this.trialRunLoading = false;
+    },
+
+    async startTrialRun() {
+      this.trialRunStarting = true;
+      this.trialRunError = null;
+      try {
+        const body = this.trialRunFromId.trim() ? { fromId: this.trialRunFromId.trim() } : {};
+        const res = await fetch('/api/trial-run/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          this.trialRunError = data.error || `Error ${res.status}`;
+          this.trialRunStarting = false;
+        } else {
+          // Poll until status confirms running, then clear the starting flag.
+          // Button stays disabled (trialRunStarting=true) the whole time.
+          const poll = async (attempts) => {
+            await this.loadTrialRunStatus();
+            if (this.trialRunStatus.running) {
+              this.trialRunStarting = false;
+            } else if (attempts > 0) {
+              setTimeout(() => poll(attempts - 1), 1000);
+            } else {
+              this.trialRunStarting = false; // give up after ~6s
+            }
+          };
+          setTimeout(() => poll(5), 1000);
+        }
+      } catch (e) {
+        this.trialRunError = e.message;
+        this.trialRunStarting = false;
+      }
+    },
+
+    async stopTrialRun() {
+      this.trialRunStopping = true;
+      this.trialRunError = null;
+      try {
+        const res = await fetch('/api/trial-run/stop', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) this.trialRunError = data.error || `Error ${res.status}`;
+        else setTimeout(() => this.loadTrialRunStatus(), 1000);
+      } catch (e) { this.trialRunError = e.message; }
+      this.trialRunStopping = false;
+    },
+
+    trialRunElapsed() {
+      const s = this.trialRunStatus?.lock?.started_at;
+      if (!s) return '—';
+      return this.durationRelative(Date.now() - new Date(s).getTime());
+    },
+
+    trialRunEta() {
+      const eta = this.trialRunStatus?.progress?.timing?.eta_iso;
+      if (!eta) return '—';
+      const remainingMs = new Date(eta).getTime() - Date.now();
+      if (remainingMs <= 0) return 'any moment';
+      return 'in ' + this.durationRelative(remainingMs);
+    },
+
+    trialRunMetric(path) {
+      const parts = path.split('.');
+      let v = this.trialRunStatus?.progress;
+      for (const p of parts) { if (v == null) return '—'; v = v[p]; }
+      return v ?? '—';
+    },
+
     _archiveVal(entry, col) {
       switch (col) {
         case 'id': return String(entry.id ?? '');
@@ -454,6 +543,22 @@ function app() {
       this.view = v;
       if (v === 'operator-history' && this.archiveEntries.length === 0) this.loadArchive();
       if (v === 'trial-history' && this.trialEntries.length === 0) this.loadTrials();
+      if (v === 'trial-run') {
+        this.loadTrialRunStatus();
+        if (!this.trialRunPollInterval) {
+          this.trialRunPollInterval = setInterval(() => {
+            if (this.view === 'trial-run') {
+              this.loadTrialRunStatus();
+            } else {
+              clearInterval(this.trialRunPollInterval);
+              this.trialRunPollInterval = null;
+            }
+          }, 5000);
+        }
+      } else if (this.trialRunPollInterval && v !== 'trial-run') {
+        clearInterval(this.trialRunPollInterval);
+        this.trialRunPollInterval = null;
+      }
     },
 
     relativeTime(iso) {

@@ -38,6 +38,9 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # temporary
 /tmp/
 
+# trial-runner one-off scripts
+/trial-runner/scripts/
+
 # user db
 /personal-email/db
 .vscode/

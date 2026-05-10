@@ -21,10 +21,15 @@ _G.recommendActionMicroagent = (emailText, journalMatches) ->
           operations:
             type: 'string'
             description: """
-              Which operation(s) do you recommend for the user to take?
-              **IMPORTANT:** If journal-context recommends to delete the email, you MUST recommend delete (without archive).
-              A move operation must use ONLY the folder name — the text appearing BEFORE the ' — ' separator in the destination list. Never include the separator or any description text after it.
-              A move operation must match existing destination exactly (case-sensitive).
+              Which single operation do you recommend?
+              You MUST output exactly one of these forms — nothing else:
+                delete
+                archive
+                skip
+                move to <FolderName>
+              where <FolderName> is the exact folder name from the valid-move-destinations list (text before ' — ').
+              Do NOT add extra words, punctuation, or description. Output only the operation string.
+              If journal-context recommends delete, output exactly: delete
               """
           rationale:
             type: 'string'
@@ -44,9 +49,14 @@ _G.recommendActionMicroagent = (emailText, journalMatches) ->
       </journal-context>
 
       <available-operations>
-      - delete
-      - move to {{destination}}
+      delete
+      archive
+      skip
+      move to <FolderName>   (example: "move to Expenses" or "move to Newsletters")
       </available-operations>
+
+      IMPORTANT: For move operations you MUST include the "move to " prefix.
+      Never output just a folder name alone.
 
       <valid-move-destinations>
       #{_G.xmlEscape _G.renderMoveFolderChoicesLib _G.cachedMoveFolders}
@@ -54,6 +64,18 @@ _G.recommendActionMicroagent = (emailText, journalMatches) ->
       """
 
     result = await microagent.run { prompt }
+
+    # Normalise operations: if the LLM returned a bare folder name without the
+    # required "move to " prefix, add it. This guards against models that copy
+    # the folder name directly from the destination list.
+    ops = String(result.operations or '').trim()
+    knownSimple = new Set ['delete', 'archive', 'skip']
+    unless knownSimple.has ops.toLowerCase() or ops.toLowerCase().startsWith 'move to '
+      # Check if it matches a known folder name (case-insensitive)
+      folderNames = Object.keys(_G.cachedMoveFolders or {})
+      matched = folderNames.find (f) -> f.toLowerCase() is ops.toLowerCase()
+      result.operations = if matched then "move to #{matched}" else ops
+
     ref = if result.journal_id == 0 then 'Guess' else "Journal #{result.journal_id}"
     confidence = Number(result.confidence ? 0)
     output = { ref, confidence, ...result, ctx: microagent.ctx }

@@ -2,7 +2,9 @@ import '../microagents/01-recommend-action.coffee'
 import { _G } from '../../lib/globals.coffee'
 
 export recommendSystem = ->
-  entities = (_G.World.Entity__find (e) -> e.recall? and not e.recommendation?)[0..._G.pipelineWidth]
+  # Require journalContext specifically so we don't fire before recallJournalSystem has run
+  # (trial entities start with partial recall containing presentationCandidate from the archive).
+  entities = (_G.World.Entity__find (e) -> e.recall?.journalContext? and not e.recommendation?)[0..._G.pipelineWidth]
   for entity in entities
     _G.currentEntityId = entity.id
     { content, recall } = entity
