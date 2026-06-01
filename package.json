@@ -3,6 +3,7 @@
     "@types/js-yaml": "^4.0.9",
     "agl-ai": "^0.1.4",
     "bun-coffeescript": "^1.0.3",
+    "chokidar": "^5.0.0",
     "js-yaml": "^4.1.1"
   },
   "name": "agents",

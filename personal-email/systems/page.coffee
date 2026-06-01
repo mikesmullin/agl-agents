@@ -7,11 +7,6 @@ _lastCheckedAt = null
 REMOVE_ON_TRANSITION = new Set ['deleted', 'archived', 'read']
 
 export pageSystem = (since) ->
-  # Re-read all existing entities from disk so operator YAML edits are picked up
-  existingEntities = _G.World.Entity__find -> true
-  for entity in existingEntities
-    await _G.Entity.load entity.id
-
   pullResult = await _G.pullBatchLib _G.spawn,
     since: since
     log: _G.log
@@ -24,7 +19,7 @@ export pageSystem = (since) ->
   for item in (pullData.results or [])
     { shortId, status, transitions } = item
     if status in ['written', 'skipped']
-      unless _G.World.Entity__find((e) -> e.id is shortId).length
+      unless _G.World.get shortId
         _G.log 'page.entity.new', { id: shortId }
         await _G.Entity.load shortId
     else if status is 'updated'

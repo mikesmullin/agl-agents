@@ -72,8 +72,8 @@ pageLoadCooldown = new _G.Cooldown 60_000*5 # 5min
 while not _G.quit
   if pageLoadCooldown.tick()
     await pageSystem since
-    await loadSystem()
 
+  await loadSystem()
   await fingerprintSystem()
   await recallSystem()
   await summarizeSystem()
@@ -86,5 +86,18 @@ while not _G.quit
   await planSystem()
   await applySystem()
   await cleanSystem()
+
+  # Print a status line when all systems are idle (nothing to do this tick)
+  all = _G.World.Entity__find -> true
+  awaitingApproval  = all.filter (e) -> e.apply?.approved is null
+  awaitingOperator  = all.filter (e) -> e.operator_input?.instruction is null and not e.skip?
+  skipped           = all.filter (e) -> e.skip?.active
+  if awaitingApproval.length or awaitingOperator.length or skipped.length
+    pullInSec = Math.ceil pageLoadCooldown.remain() / 1000
+    parts = []
+    parts.push "#{awaitingApproval.length} awaiting apply approval"  if awaitingApproval.length
+    parts.push "#{awaitingOperator.length} awaiting operator input"  if awaitingOperator.length
+    parts.push "#{skipped.length} skipped"                           if skipped.length
+    _G.traceReplaceLine '💤', "#{parts.join ', '}. Next pull in #{pullInSec}s.", { final: true }
 
   await _G.sleep 1_000 # 1sec
