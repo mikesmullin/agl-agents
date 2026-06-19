@@ -107,6 +107,31 @@ _G.Entity = class Entity
   @_fresh: (entity) ->
     _G.World.get(entity.id) ? entity
 
+  # Exponential backoff: 30s, 60s, 2m, 4m, … capped at 30m
+  @_backoffMs: (retryCount) ->
+    Math.min(30_000 * Math.pow(2, retryCount - 1), 30 * 60_000)
+
+  @recordError: (entity, err) ->
+    fresh = _G.World.get(entity.id) ? entity
+    retryCount = (fresh._error?.retryCount or 0) + 1
+    backoffMs = @_backoffMs retryCount
+    lastErrorAt = new Date().toISOString()
+    nextRetryAt = new Date(Date.now() + backoffMs).toISOString()
+    message = String(err?.message or err or 'unknown error')
+    updated = { ...fresh, _error: { message, retryCount, lastErrorAt, nextRetryAt } }
+    await @save updated
+    _G.log 'entity.error', { id: entity.id, retryCount, backoffMs, nextRetryAt, message }, 'agent'
+    updated
+
+  @clearError: (entity) ->
+    return entity unless entity._error?
+    fresh = _G.World.get(entity.id) ? entity
+    return fresh unless fresh._error?
+    updated = { ...fresh }
+    delete updated._error
+    await @save updated
+    updated
+
   @log: (entity, message) ->
     fresh = @_fresh entity
     entry = "[#{new Date().toISOString()}] #{message}"
@@ -125,3 +150,17 @@ _G.Entity = class Entity
       updated = { ...fresh, traces: [...(fresh.traces or []), { emoji, label, ms }] }
       await _G.Entity.save updated
       updated
+
+# ---------------------------------------------------------------------------
+# Per-entity error-catching wrapper used by every system's for-loop.
+# On success: clears any lingering _error.
+# On failure: records error with exponential backoff; loop continues.
+# ---------------------------------------------------------------------------
+export runForEntity = _G.runForEntity = (entity, fn) ->
+  try
+    result = await fn()
+    await _G.Entity.clearError entity if entity._error?
+    result
+  catch err
+    await _G.Entity.recordError entity, err
+    undefined

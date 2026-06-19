@@ -7,12 +7,13 @@ export executeSystem = ->
   )[0..._G.pipelineWidth]
   for entity in entities
     _G.currentEntityId = entity.id
-    { operator_input } = entity
-    trace = _G.Entity.traceStart entity, '⚙️', 'Executing instruction'
-    result = await _G.executeInstructionMicroagent entity.id, operator_input.instruction
-    entity = await trace.traceEnd()
-    entity = await _G.Entity.log entity, "#{if result.success then '✅' else '❌'} #{result.summary}"
-    await _G.Entity.patch entity, 'execution',
-      success: result.success
-      summary: result.summary
-      instruction: operator_input.instruction
+    await _G.runForEntity entity, ->
+      { operator_input } = entity
+      trace = _G.Entity.traceStart entity, '⚙️', 'Executing instruction'
+      result = await _G.executeInstructionMicroagent entity.id, operator_input.instruction
+      entity = await trace.traceEnd()
+      entity = await _G.Entity.log entity, "#{if result.success then '✅' else '❌'} #{result.summary}"
+      await _G.Entity.patch entity, 'execution',
+        success: result.success
+        summary: result.summary
+        instruction: operator_input.instruction

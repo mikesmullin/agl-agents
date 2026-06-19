@@ -7,15 +7,16 @@ export recommendSystem = ->
   entities = (_G.World.Entity__find (e) -> e.recall?.journalContext? and not e.recommendation?)[0..._G.pipelineWidth]
   for entity in entities
     _G.currentEntityId = entity.id
-    { content, recall } = entity
-    result = await _G.recommendActionMicroagent content.body, recall.journalContext
-    if result.ctx
-      entity = await _G.Entity.patch entity, 'retrospective',
-        { ...(entity.retrospective or {}), stage_6_context: result.ctx, stage_6_model: _G.MODEL }
-    await _G.Entity.patch entity, 'recommendation',
-      journal_id: result.journal_id
-      ref: result.ref
-      operations: result.operations
-      rationale: result.rationale
-      confidence: Number(result.confidence ? 0)
-      label: "(#{result.ref}) #{result.operations}. #{result.rationale}."
+    await _G.runForEntity entity, ->
+      { content, recall } = entity
+      result = await _G.recommendActionMicroagent content.body, recall.journalContext
+      if result.ctx
+        entity = await _G.Entity.patch entity, 'retrospective',
+          { ...(entity.retrospective or {}), stage_6_context: result.ctx, stage_6_model: _G.MODEL }
+      await _G.Entity.patch entity, 'recommendation',
+        journal_id: result.journal_id
+        ref: result.ref
+        operations: result.operations
+        rationale: result.rationale
+        confidence: Number(result.confidence ? 0)
+        label: "(#{result.ref}) #{result.operations}. #{result.rationale}."

@@ -25,5 +25,13 @@ _G.World =
       delete _entities[id]
       _entitiesArray = _entitiesArray.filter (e) -> e.id isnt id
 
+  # Bypasses backoff filter — use for status/debug only.
+  Entity__all: ->
+    _entitiesArray.slice()
+
   Entity__find: (filterFn) ->
-    _entitiesArray.filter filterFn
+    now = Date.now()
+    _entitiesArray.filter (e) ->
+      # Skip entities in backoff until nextRetryAt has passed
+      return false if e._error?.nextRetryAt? and new Date(e._error.nextRetryAt).getTime() > now
+      filterFn e

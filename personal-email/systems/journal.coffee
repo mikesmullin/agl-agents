@@ -6,18 +6,19 @@ export journalSystem = ->
   entities = (_G.World.Entity__find (e) -> e.execution? and not e.journal?)[0..._G.pipelineWidth]
   for entity in entities
     _G.currentEntityId = entity.id
-    { content, operator_input, execution, recommendation } = entity
+    await _G.runForEntity entity, ->
+      { content, operator_input, execution, recommendation } = entity
 
-    if operator_input._parsed_operation is 'proceed' and recommendation.journal_id > 0
-      await _G.reinforceJournalEntryLib _G.spawn, _G.DB_DIR, _G.MEMO_DB, recommendation.journal_id
+      if operator_input._parsed_operation is 'proceed' and recommendation.journal_id > 0
+        await _G.reinforceJournalEntryLib _G.spawn, _G.DB_DIR, _G.MEMO_DB, recommendation.journal_id
 
-    journalEntry = await _G.buildJournalEntryMicroagent(
-      content.body, operator_input.instruction, execution.summary
-    )
-    await _G.saveJournalEntry _G.spawn, _G.DB_DIR, _G.MEMO_DB, journalEntry
+      journalEntry = await _G.buildJournalEntryMicroagent(
+        content.body, operator_input.instruction, execution.summary
+      )
+      await _G.saveJournalEntry _G.spawn, _G.DB_DIR, _G.MEMO_DB, journalEntry
 
-    presentationEntry = await _G.hasFormattingInstructions operator_input.instruction, content.body
-    if presentationEntry?.has_formatting_instructions
-      await _G.savePresentationEntry _G.spawn, _G.DB_DIR, _G.PRESENTATION_MEMO_DB, presentationEntry
+      presentationEntry = await _G.hasFormattingInstructions operator_input.instruction, content.body
+      if presentationEntry?.has_formatting_instructions
+        await _G.savePresentationEntry _G.spawn, _G.DB_DIR, _G.PRESENTATION_MEMO_DB, presentationEntry
 
-    await _G.Entity.patch entity, 'journal', journalEntry
+      await _G.Entity.patch entity, 'journal', journalEntry

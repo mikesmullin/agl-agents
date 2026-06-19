@@ -6,11 +6,12 @@ export planSystem = ->
 
   for entity in entities
     _G.currentEntityId = entity.id
-    result = await _G.traceStep '📋', 'Planning mutations', -> _G.planEmailTransactionLib(entity.id)
-    planText = (result.stdout or result.stderr or '').trim()
+    await _G.runForEntity entity, ->
+      result = await _G.traceStep '📋', 'Planning mutations', -> _G.planEmailTransactionLib(entity.id)
+      planText = (result.stdout or result.stderr or '').trim()
 
-    entity = await _G.Entity.log entity, "plan:\n#{planText}"
-    await _G.Entity.patch entity, 'plan',
-      success: result.code is 0
-      text: planText
-      planned_at: new Date().toISOString()
+      entity = await _G.Entity.log entity, "plan:\n#{planText}"
+      await _G.Entity.patch entity, 'plan',
+        success: result.code is 0
+        text: planText
+        planned_at: new Date().toISOString()

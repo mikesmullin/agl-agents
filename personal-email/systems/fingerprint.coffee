@@ -5,5 +5,6 @@ export fingerprintSystem = ->
   entities = (_G.World.Entity__find (e) -> e.content? and not e.fingerprint?)[0..._G.pipelineWidth]
   for entity in entities
     _G.currentEntityId = entity.id
-    fingerprint = await _G.fingerprintEmailMicroagent entity.content.body
-    await _G.Entity.patch entity, 'fingerprint', fingerprint
+    await _G.runForEntity entity, ->
+      fingerprint = await _G.fingerprintEmailMicroagent entity.content.body
+      await _G.Entity.patch entity, 'fingerprint', fingerprint

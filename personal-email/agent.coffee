@@ -88,16 +88,19 @@ while not _G.quit
   await cleanSystem()
 
   # Print a status line when all systems are idle (nothing to do this tick)
-  all = _G.World.Entity__find -> true
+  now = Date.now()
+  all = _G.World.Entity__all()
   awaitingApproval  = all.filter (e) -> e.apply?.approved is null
   awaitingOperator  = all.filter (e) -> e.operator_input?.instruction is null and not e.skip?
   skipped           = all.filter (e) -> e.skip?.active
-  if awaitingApproval.length or awaitingOperator.length or skipped.length
+  inBackoff         = all.filter (e) -> e._error?.nextRetryAt? and new Date(e._error.nextRetryAt).getTime() > now
+  if awaitingApproval.length or awaitingOperator.length or skipped.length or inBackoff.length
     pullInSec = Math.ceil pageLoadCooldown.remain() / 1000
     parts = []
     parts.push "#{awaitingApproval.length} awaiting apply approval"  if awaitingApproval.length
     parts.push "#{awaitingOperator.length} awaiting operator input"  if awaitingOperator.length
     parts.push "#{skipped.length} skipped"                           if skipped.length
+    parts.push "#{inBackoff.length} in backoff"                      if inBackoff.length
     _G.traceReplaceLine '💤', "#{parts.join ', '}. Next pull in #{pullInSec}s.", { final: true }
 
   await _G.sleep 1_000 # 1sec
