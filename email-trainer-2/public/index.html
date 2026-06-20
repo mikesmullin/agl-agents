@@ -1,0 +1,1144 @@
+<!DOCTYPE html>
+<html lang="en" class="dark" style="color-scheme: dark;">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>✉️ Email Trainer 2</title>
+
+  <!-- Tailwind CSS (dark mode via class strategy) -->
+  <script>
+    window.tailwindConfig = { darkMode: 'class', theme: { extend: {} } };
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Phosphor Icons -->
+  <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/bold/style.css">
+
+  <!-- App logic (must be before Alpine) -->
+  <script src="/js/app.js"></script>
+
+  <!-- Alpine collapse plugin (must load before Alpine core) -->
+  <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.14.8/dist/cdn.min.js"></script>
+
+  <!-- Alpine.js (deferred — starts after DOM ready) -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
+
+  <!-- Custom styles -->
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+
+<body class="bg-gray-950 text-gray-100" x-data="app()" x-cloak style="height: 100vh; overflow: hidden;">
+
+  <div class="flex h-screen overflow-hidden">
+
+    <!-- =====================================================================
+       Sidebar
+       ===================================================================== -->
+    <aside class="sidebar-full w-64 flex-shrink-0 bg-gray-900 border-r border-gray-800 flex flex-col">
+
+      <!-- Header -->
+      <div class="px-4 py-4 border-b border-gray-800">
+        <div class="flex items-center gap-2">
+          <span class="text-2xl">✉️</span>
+          <div>
+            <h1 class="sidebar-label text-sm font-bold text-white leading-tight">Email Trainer</h1>
+            <p class="sidebar-label text-xs text-gray-500 leading-tight">Personal Email Triage</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-1.5 mt-3">
+          <div class="w-2 h-2 rounded-full flex-shrink-0" :class="{
+            'bg-green-500 ws-dot-pulse': wsStatus === 'connected',
+            'bg-yellow-500 ws-dot-pulse': wsStatus === 'connecting',
+            'bg-red-500': wsStatus === 'disconnected'
+          }"></div>
+          <span class="sidebar-label text-xs text-gray-500" x-text="wsStatus"></span>
+        </div>
+      </div>
+
+      <!-- Stage filters -->
+      <nav class="flex-1 sidebar-scroll overflow-y-auto p-2 space-y-0.5">
+        <div class="flex items-center justify-between px-1 pb-1">
+          <span class="text-xs text-gray-600 uppercase tracking-widest">🎭 Stages</span>
+          <button @click="clickEyeToggle()" :title="showAllStages ? 'Show active stages only' : 'Show all stages'"
+            class="p-1 rounded text-gray-600 hover:text-gray-300 hover:bg-gray-800 transition-colors">
+            <i x-show="!showAllStages" class="ph-bold ph-eye text-sm" aria-hidden="true"></i>
+            <i x-show="showAllStages" class="ph-bold ph-eye-slash text-sm" aria-hidden="true"></i>
+          </button>
+        </div>
+
+        <button @click="setView('triage'); filter = null; openId = null"
+          class="w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors hover:bg-gray-800"
+          :class="{ 'bg-gray-800': view === 'triage' && filter === null }">
+          <span class="sidebar-label text-sm font-medium text-gray-300">All Emails</span>
+          <span class="count-badge bg-gray-700 text-gray-200" x-text="entities.length"></span>
+        </button>
+
+        <template x-for="stage in visibleStages" :key="stage.id">
+          <button @click="setView('triage'); clickStageFilter(stage.id)"
+            class="w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors hover:bg-gray-800"
+            :class="{ 'bg-gray-800/80 ring-1 ring-inset': filter === stage.id }"
+            :style="{ '--tw-ring-color': filter === stage.id ? `${stageColor(stage.id)}40` : null }">
+            <span class="flex items-center gap-1.5 min-w-0">
+              <span x-text="stage.emoji" class="text-sm flex-shrink-0"></span>
+              <span class="sidebar-label text-sm text-gray-300 truncate" x-text="stage.label"></span>
+              <template x-if="stage.human">
+                <span class="sidebar-label text-xs text-gray-500">👤</span>
+              </template>
+            </span>
+            <span class="count-badge text-white flex-shrink-0 count-badge-wrap"
+              :style="`background-color: ${stageColor(stage.id)}`" x-text="stageCounts[stage.id]"></span>
+          </button>
+        </template>
+      </nav>
+
+      <!-- Training section -->
+      <nav class="flex-shrink-0 border-t border-gray-800 p-2 space-y-0.5">
+        <div class="px-1 pb-1 pt-0.5">
+          <span class="text-xs text-gray-600 uppercase tracking-widest">Training</span>
+        </div>
+        <button @click="setView('operator-history'); filter = null"
+          class="w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors hover:bg-gray-800"
+          :class="{ 'bg-gray-800': view === 'operator-history' }">
+          <span class="text-sm">📋</span>
+          <span class="sidebar-label text-sm text-gray-300">Operator History</span>
+        </button>
+        <button @click="setView('trial-history'); filter = null"
+          class="w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors hover:bg-gray-800"
+          :class="{ 'bg-gray-800': view === 'trial-history' }">
+          <span class="text-sm">🧪</span>
+          <span class="sidebar-label text-sm text-gray-300">Trial History</span>
+        </button>
+        <button @click="setView('trial-run'); filter = null"
+          class="w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors hover:bg-gray-800"
+          :class="{ 'bg-gray-800': view === 'trial-run' }">
+          <span class="text-sm">🏃</span>
+          <span class="sidebar-label text-sm text-gray-300">Trial Run</span>
+          <template x-if="trialRunStatus.running">
+            <span class="ml-auto w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+          </template>
+        </button>
+      </nav>
+
+      <!-- Hotkey hints -->
+      <div class="p-3 border-t border-gray-800 text-xs text-gray-500 space-y-1">
+
+        <!-- Context-sensitive hotkey hints (to focused row stage) -->
+        <div class="sidebar-label space-y-0.5 text-gray-700 leading-relaxed">
+          <div><kbd class="bg-gray-800 px-1 rounded text-gray-500">j</kbd>/<kbd
+              class="bg-gray-800 px-1 rounded text-gray-500">k</kbd> navigate &nbsp; <kbd
+              class="bg-gray-800 px-1 rounded text-gray-500">space</kbd>/<kbd
+              class="bg-gray-800 px-1 rounded text-gray-500">x</kbd> select</div>
+          <template x-if="focusedStageId === 'awaiting_input'">
+            <div><kbd class="bg-gray-800 px-1 rounded text-gray-500">p</kbd> proceed &nbsp; <kbd
+                class="bg-gray-800 px-1 rounded text-gray-500">s</kbd> skip &nbsp; <kbd
+                class="bg-gray-800 px-1 rounded text-gray-500">d</kbd> delete &nbsp; <kbd
+                class="bg-gray-800 px-1 rounded text-gray-500">a</kbd> archive</div>
+          </template>
+          <template x-if="focusedStageId === 'awaiting_approval'">
+            <div><kbd class="bg-gray-800 px-1 rounded text-gray-500">p</kbd>/<kbd
+                class="bg-gray-800 px-1 rounded text-gray-500">a</kbd> approve</div>
+          </template>
+          <template x-if="focusedStageId === 'skipped'">
+            <div><kbd class="bg-gray-800 px-1 rounded text-gray-500">r</kbd> re-process</div>
+          </template>
+          <div class="pt-0.5"><kbd class="bg-gray-800 px-1 rounded text-gray-500">/</kbd> search &nbsp; <kbd
+              class="bg-gray-800 px-1 rounded text-gray-500">Enter</kbd> open &nbsp; <kbd
+              class="bg-gray-800 px-1 rounded text-gray-500">Esc</kbd> back</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- =====================================================================
+       Main content
+       ===================================================================== -->
+    <main class="flex-1 min-w-0 flex flex-col">
+
+      <!-- ========== Search + Toolbar (triage only) ========== -->
+      <div x-show="view === 'triage'"
+        class="flex-shrink-0 border-b border-gray-800 bg-gray-950/95 backdrop-blur-sm z-10">
+
+        <!-- Search row -->
+        <div class="px-4 pt-3 pb-2 flex items-center gap-2">
+          <div class="relative flex-1 max-w-2xl">
+            <i class="ph-bold ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-600 text-sm"
+              aria-hidden="true"></i>
+            <input type="text" x-model="searchQuery" data-search-box placeholder="Search mail…"
+              class="form-input w-full pl-9 pr-8 py-2 text-sm">
+            <button x-show="searchQuery" @click="searchQuery = ''"
+              class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-300 text-sm">✕</button>
+          </div>
+        </div>
+
+        <!-- Toolbar row -->
+        <div class="px-4 pb-2.5 flex items-center gap-1.5">
+          <!-- Select / deselect all -->
+          <button @click="toggleSelectAll()" class="tool-btn" title="Select / deselect all">
+            <i class="ph-bold" :class="allSelected ? 'ph-check-square' : 'ph-square'" aria-hidden="true"></i>
+          </button>
+          <!-- Refresh -->
+          <button @click="refresh()" class="tool-btn" title="Refresh (reload latest state)">
+            <i class="ph-bold ph-arrows-clockwise" :class="{ 'spin-once': refreshing }" aria-hidden="true"></i>
+          </button>
+
+          <div class="w-px h-5 bg-gray-800 mx-1"></div>
+
+          <!-- Proceed (submits immediately — never needs a rationale; mainly for Awaiting Input) -->
+          <button x-show="showProceedBtn" @click="proceedNow()" class="tool-btn tool-btn-proceed" :disabled="submitting"
+            title="Proceed (apply recommendation) — submits immediately to selected">
+            <i class="ph-bold ph-play" aria-hidden="true"></i>
+            <span class="tool-label">Proceed</span>
+          </button>
+          <!-- Approve (Awaiting Approval) — submits immediately to selected -->
+          <button x-show="showApproveBtn" @click="approveNow()" class="tool-btn tool-btn-proceed" :disabled="submitting"
+            title="Approve & apply — submits immediately to selected">
+            <i class="ph-bold ph-check-circle" aria-hidden="true"></i>
+            <span class="tool-label">Approve</span>
+          </button>
+          <!-- Skip -->
+          <button @click="openAction('skip')" class="tool-btn" title="Skip"
+            :class="{ 'tool-btn-active': pendingAction === 'skip' }">
+            <i class="ph-bold ph-skip-forward" aria-hidden="true"></i>
+          </button>
+          <!-- Spam -->
+          <button @click="openAction('spam')" class="tool-btn" title="Mark as spam"
+            :class="{ 'tool-btn-active': pendingAction === 'spam' }">
+            <i class="ph-bold ph-prohibit" aria-hidden="true"></i>
+          </button>
+          <!-- Delete -->
+          <button @click="openAction('delete')" class="tool-btn" title="Delete (trash)"
+            :class="{ 'tool-btn-active': pendingAction === 'delete' }">
+            <i class="ph-bold ph-trash" aria-hidden="true"></i>
+          </button>
+          <!-- Archive -->
+          <button @click="openAction('archive')" class="tool-btn" title="Archive"
+            :class="{ 'tool-btn-active': pendingAction === 'archive' }">
+            <i class="ph-bold ph-package" aria-hidden="true"></i>
+          </button>
+          <!-- Move -->
+          <button @click="openAction('move')" class="tool-btn" title="Move to folder…"
+            :class="{ 'tool-btn-active': pendingAction === 'move' }">
+            <i class="ph-bold ph-folder" aria-hidden="true"></i>
+          </button>
+
+          <!-- Selection / target count -->
+          <div class="ml-auto flex items-center gap-3 text-xs text-gray-500">
+            <span x-show="actionFlash && !secondaryOpen" x-transition class="text-green-400 font-medium"
+              x-text="actionFlash"></span>
+            <span x-show="actionError && !secondaryOpen" x-transition class="text-red-400 font-medium"
+              x-text="actionError"></span>
+            <span x-show="selectedCount > 0" class="text-indigo-300 font-medium">
+              <span x-text="selectedCount"></span> selected
+              <button @click="clearSelection()" class="ml-1 text-gray-500 hover:text-gray-300">✕</button>
+            </span>
+            <span><span x-text="filteredEntities.length"></span><span
+                x-text="filter ? ' in stage' : ' total'"></span></span>
+          </div>
+        </div>
+
+        <!-- ========== Secondary toolbar (progressive disclosure) ========== -->
+        <div x-show="secondaryOpen" x-collapse class="border-t border-gray-800 bg-gray-900/60 px-4 py-3">
+          <div class="flex items-start gap-3 flex-wrap">
+            <span class="text-xs font-semibold uppercase tracking-wide pt-2" :class="actionMeta(pendingAction).color"
+              x-text="actionMeta(pendingAction).label"></span>
+
+            <!-- Target summary -->
+            <span class="text-xs text-gray-600 pt-2" x-text="actionTargetSummary()"></span>
+
+            <div class="flex-1 min-w-[12rem] grid gap-2"
+              :class="pendingAction === 'notice' ? 'grid-cols-1' : 'grid-cols-1'">
+
+              <!-- Move destination -->
+              <template x-if="pendingAction === 'move'">
+                <select x-model="form.destination" class="form-input w-full text-sm">
+                  <option value="">Choose folder…</option>
+                  <template x-for="dest in destinations" :key="dest">
+                    <option :value="dest" x-text="dest"></option>
+                  </template>
+                </select>
+              </template>
+
+              <!-- Notice fields -->
+              <template x-if="pendingAction === 'notice'">
+                <div class="space-y-2">
+                  <input type="text" x-model="form.notice_capture" placeholder="notice_capture — what to capture…"
+                    class="form-input w-full text-sm">
+                  <input type="text" x-model="form.notice_display" placeholder="notice_display — how to present it…"
+                    class="form-input w-full text-sm">
+                </div>
+              </template>
+
+              <!-- Instruction (most operations) -->
+              <input type="text" x-model="form.instruction" data-instruction-box @keydown.enter.prevent="submitAction()"
+                placeholder="Instruction — proceed · skip · delete · custom Gmail command…"
+                class="form-input w-full text-sm">
+
+              <!-- Rationale -->
+              <input type="text" x-model="form.rationale" @keydown.enter.prevent="submitAction()"
+                placeholder="Rationale (optional) — seeds training signal…" class="form-input w-full text-sm">
+            </div>
+
+            <div class="flex items-center gap-2 pt-0.5">
+              <button @click="toggleNotice()" class="text-xs px-2 py-1 rounded border transition-colors"
+                :class="pendingAction === 'notice' ? 'bg-indigo-900/60 border-indigo-600/60 text-indigo-300' : 'border-gray-700 text-gray-500 hover:text-gray-300'"
+                title="Notice (out-of-band operator digest)">📢 Notice</button>
+              <button @click="submitAction()" :disabled="submitting || (pendingAction === 'move' && !form.destination)"
+                class="btn-proceed px-4 py-1.5 text-sm font-bold disabled:opacity-40">
+                <span x-text="submitting ? '⏳ Submitting…' : '▶ Submit'"></span>
+              </button>
+              <button @click="closeAction()" class="tool-btn" title="Close action bar">
+                <i class="ph-bold ph-x" aria-hidden="true"></i>
+              </button>
+            </div>
+          </div>
+          <div class="mt-2 flex items-center gap-3">
+            <span x-show="actionFlash" x-transition class="text-green-400 text-xs font-medium"
+              x-text="actionFlash"></span>
+            <span x-show="actionError" class="text-red-400 text-xs form-error-shake" x-text="actionError"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================================================================
+         Email list (triage view, no email open)
+         ================================================================ -->
+      <div class="main-scroll flex-1" x-show="view === 'triage' && !openId">
+
+        <!-- Empty state -->
+        <template x-if="filteredEntities.length === 0 && wsStatus === 'connected'">
+          <div class="text-center py-28 select-none">
+            <div class="text-6xl mb-4">📭</div>
+            <h2 class="text-xl font-bold text-gray-300">
+              <span x-text="filter ? 'Nothing in this stage' : (searchQuery ? 'No matches' : 'Inbox zero!')"></span>
+            </h2>
+            <p class="text-gray-600 mt-2 text-sm">
+              <span
+                x-text="filter || searchQuery ? 'Try clearing your filter or search.' : 'No emails waiting for triage. 🌟'"></span>
+            </p>
+            <button x-show="filter || searchQuery" @click="filter = null; searchQuery = ''"
+              class="mt-5 px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm text-gray-300">Clear</button>
+          </div>
+        </template>
+
+        <!-- Connecting -->
+        <template x-if="filteredEntities.length === 0 && wsStatus !== 'connected'">
+          <div class="text-center py-28">
+            <div class="spinner mx-auto mb-4" style="width:2.5rem;height:2.5rem;border-width:3px;"></div>
+            <p class="text-gray-500 text-sm" x-text="wsStatus === 'connecting' ? 'Connecting…' : 'Reconnecting…'"></p>
+          </div>
+        </template>
+
+        <!-- Rows -->
+        <ul class="divide-y divide-gray-900">
+          <template x-for="entity in filteredEntities" :key="entity.id">
+            <li class="email-row group flex items-center gap-2 px-3 py-2 transition-colors" :class="{
+                'bg-gray-900/60': selected[entity.id],
+                'row-focused': focusedId === entity.id,
+                'row-unread': isGated(entity),
+                'opacity-0 -translate-x-3': entity._deleting,
+              }">
+
+              <!-- Select checkbox -->
+              <button @click.stop="toggleSelect(entity.id, $event)" class="flex-shrink-0 text-lg leading-none"
+                :class="selected[entity.id] ? 'text-indigo-400' : 'text-gray-600 hover:text-gray-400'"
+                :title="selected[entity.id] ? 'Deselect (Shift-click for range)' : 'Select (Shift-click for range)'">
+                <i class="ph-bold" :class="selected[entity.id] ? 'ph-check-square' : 'ph-square'"
+                  aria-hidden="true"></i>
+              </button>
+
+              <!-- Star -->
+              <button @click.stop="toggleStar(entity.id)" class="flex-shrink-0 text-base leading-none"
+                :class="isStarred(entity.id) ? 'text-yellow-400' : 'text-gray-700 hover:text-gray-500'"
+                :title="isStarred(entity.id) ? 'Unstar' : 'Star'">
+                <i class="ph-bold ph-star" aria-hidden="true"></i>
+              </button>
+
+              <!-- Important -->
+              <button @click.stop="toggleImportant(entity.id)" class="flex-shrink-0 text-base leading-none"
+                :class="isImportant(entity.id) ? 'text-amber-500' : 'text-gray-700 hover:text-gray-500'"
+                :title="isImportant(entity.id) ? 'Mark not important' : 'Mark important'">
+                <i class="ph-bold" :class="isImportant(entity.id) ? 'ph-warning' : 'ph-warning-circle'"
+                  aria-hidden="true"></i>
+              </button>
+
+              <!-- Stage dot -->
+              <span class="flex-shrink-0 w-2 h-2 rounded-full"
+                :style="`background-color: ${stageColor(getStage(entity).id)}`" :title="getStage(entity).label"></span>
+
+              <!-- Sender (clickable → open / modifier-select) -->
+              <span class="flex-shrink-0 w-44 truncate text-sm cursor-pointer"
+                :class="isGated(entity) ? 'text-white font-semibold' : 'text-gray-400'"
+                @click="rowClick(entity, $event)" x-text="senderName(entity)"></span>
+
+              <!-- Summary (headline) + preview (description), both clickable -->
+              <span class="flex-1 min-w-0 flex items-baseline gap-2">
+                <span class="text-sm flex-shrink-0 max-w-[40%] truncate cursor-pointer"
+                  :class="isGated(entity) ? 'text-gray-100 font-medium' : 'text-gray-300'"
+                  @click="rowClick(entity, $event)"
+                  x-text="entity.summary?.headline || entity.envelope?.subject || entity.id"></span>
+                <span class="text-sm text-gray-600 truncate cursor-pointer hover:text-gray-400"
+                  @click="rowClick(entity, $event)"
+                  x-text="entity.summary?.description ? '— ' + entity.summary.description : (entity.summary?.text ? '— ' + entity.summary.text.replace(/^.*\n+/, '').trim() : '')"></span>
+              </span>
+
+              <!-- Recommendation chip -->
+              <span x-show="entity.recommendation?.operations"
+                :class="'flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium hidden md:inline ' + recChipClass(entity.recommendation?.operations)"
+                x-text="entity.recommendation?.operations || ''"></span>
+
+              <!-- Timestamp -->
+              <span class="flex-shrink-0 w-16 text-right text-xs text-gray-600 tabular-nums"
+                :title="entity.envelope?.date || ''" x-text="relativeTime(entity.envelope?.date)"></span>
+            </li>
+          </template>
+        </ul>
+        <div class="h-16"></div>
+      </div>
+
+      <!-- ================================================================
+         Email detail (triage view, email open)
+         ================================================================ -->
+      <div class="main-scroll flex-1" x-show="view === 'triage' && openId">
+        <template x-if="openEntity">
+          <div class="max-w-4xl mx-auto px-5 py-5" x-data="{ get entity() { return openEntity; } }">
+
+            <!-- Back -->
+            <button @click="openId = null"
+              class="mb-4 flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-300 transition-colors">
+              <i class="ph-bold ph-arrow-left" aria-hidden="true"></i> Back to list
+            </button>
+
+            <!-- Header card -->
+            <div class="rounded-xl border border-gray-800 bg-gray-900 overflow-hidden">
+              <div class="px-5 pt-4 pb-3 border-b border-gray-800/60 flex items-start justify-between gap-3">
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-2">
+                    <button @click.stop="toggleStar(entity.id)" class="text-base"
+                      :class="isStarred(entity.id) ? 'text-yellow-400' : 'text-gray-700 hover:text-gray-500'">
+                      <i class="ph-bold ph-star" aria-hidden="true"></i>
+                    </button>
+                    <button @click.stop="toggleImportant(entity.id)" class="text-base"
+                      :class="isImportant(entity.id) ? 'text-amber-500' : 'text-gray-700 hover:text-gray-500'">
+                      <i class="ph-bold" :class="isImportant(entity.id) ? 'ph-warning' : 'ph-warning-circle'"
+                        aria-hidden="true"></i>
+                    </button>
+                    <span class="text-xs text-gray-500 truncate" x-text="entity.envelope?.from || '—'"></span>
+                  </div>
+                  <h2 class="text-base font-semibold text-white mt-1 leading-snug"
+                    x-text="entity.envelope?.subject || entity.id"></h2>
+                </div>
+                <div class="flex-shrink-0 flex flex-col items-end gap-1.5">
+                  <span class="text-xs text-gray-600 whitespace-nowrap"
+                    x-text="formatDate(entity.envelope?.date)"></span>
+                  <span class="px-2 py-0.5 rounded-full text-xs font-semibold text-black/80 whitespace-nowrap"
+                    :style="`background-color: ${stageColor(getStage(entity).id)}`"
+                    x-text="getStage(entity).emoji + ' ' + getStage(entity).label"></span>
+                </div>
+              </div>
+
+              <!-- AI summary -->
+              <div class="px-5 py-3 border-b border-gray-800/40">
+                <p class="text-sm font-semibold text-white" x-text="entity.summary?.headline || ''"></p>
+                <p class="text-sm text-gray-400 mt-1"
+                  x-text="entity.summary?.description || entity.summary?.text?.replace(/^.*\n+/, '').trim() || ''"></p>
+                <!-- Recommendation -->
+                <div x-show="entity.recommendation?.operations" class="flex items-center flex-wrap gap-2 mt-3">
+                  <span
+                    :class="'px-2 py-0.5 rounded text-xs font-medium ' + recChipClass(entity.recommendation?.operations)"
+                    x-text="entity.recommendation?.operations || ''"></span>
+                  <span class="inline-flex items-center gap-1.5 text-xs text-gray-500">
+                    <span class="inline-block rounded-sm overflow-hidden align-middle"
+                      style="width:50px;height:8px;background:#1f2937">
+                      <span class="block h-full rounded-sm"
+                        :style="{ width: (entity.recommendation?.confidence || 0) + '%', background: confMeterColor(entity.recommendation?.confidence) }"></span>
+                    </span>
+                    <span x-text="`${entity.recommendation?.confidence || '?'}%`"></span>
+                  </span>
+                  <span x-show="entity.recommendation?.ref" class="text-xs text-gray-600"
+                    x-text="entity.recommendation?.ref || ''"></span>
+                </div>
+                <p x-show="entity.recommendation?.rationale" class="text-xs text-gray-500 mt-2 italic"
+                  x-text="entity.recommendation?.rationale || ''"></p>
+              </div>
+
+              <!-- Stage-specific status -->
+              <div class="px-5 py-3 border-b border-gray-800/40 text-sm">
+                <template x-if="getStage(entity).id === 'awaiting_input'">
+                  <p class="text-yellow-400">✏️ Awaiting your input — choose an action from the toolbar above.</p>
+                </template>
+                <template x-if="getStage(entity).id === 'awaiting_approval'">
+                  <div>
+                    <p class="text-blue-400 mb-2">☑️ Awaiting approval — review the plan, then click Proceed to approve.
+                    </p>
+                    <pre class="plan-text" x-text="stripAnsi(entity.plan?.text || '')"></pre>
+                  </div>
+                </template>
+                <template x-if="getStage(entity).id === 'skipped'">
+                  <p class="text-gray-500">⏭️ Skipped. Use Proceed to re-process.</p>
+                </template>
+                <template x-if="getStage(entity).id === 'processing'">
+                  <p class="text-gray-400 flex items-center gap-2"><span class="spinner"></span> Agent is processing…
+                  </p>
+                </template>
+                <template x-if="getStage(entity).id === 'applying'">
+                  <p class="text-blue-400 flex items-center gap-2"><span class="spinner"
+                      style="border-top-color:#60a5fa;border-color:#1e3a5f;"></span> Applying mutations to Gmail…</p>
+                </template>
+                <template x-if="getStage(entity).id === 'done'">
+                  <p class="text-green-400">✅ Applied <span class="text-gray-600 text-xs"
+                      x-text="formatDate(entity.apply?.applied_at)"></span></p>
+                </template>
+                <template x-if="['new','loading','analyzing','recommended'].includes(getStage(entity).id)">
+                  <p class="text-gray-500 flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full ws-dot-pulse"
+                      :style="`background-color: ${stageColor(getStage(entity).id)}`"></span>
+                    Pipeline running…
+                  </p>
+                </template>
+              </div>
+
+              <!-- Details table -->
+              <div class="border-t border-gray-800/40" x-data="{ open: false }">
+                <button @click="open = !open"
+                  class="w-full px-5 py-2 text-xs text-gray-600 hover:text-gray-400 flex items-center justify-between transition-colors">
+                  <span x-text="open ? '▲ Hide fields' : '▾ Entity fields'"></span>
+                  <code class="font-mono text-gray-600" x-text="entity.id"></code>
+                </button>
+                <div x-show="open" x-collapse class="px-5 pb-4">
+                  <div class="space-y-0.5 text-xs font-mono">
+                    <template x-for="[k, v] in Object.entries(entitySummaryFields(entity))" :key="k">
+                      <div class="flex gap-2 min-w-0">
+                        <span class="text-gray-600 flex-shrink-0 w-36 text-right" x-text="k + ':'"></span>
+                        <span class="text-gray-400 break-all"
+                          x-text="typeof v === 'object' ? JSON.stringify(v).slice(0, 200) : String(v ?? '').slice(0, 200)"></span>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Original email (secure sandboxed render) -->
+            <div class="mt-5 rounded-xl border border-gray-800 bg-gray-900 overflow-hidden">
+              <div class="px-5 py-2.5 border-b border-gray-800/60 flex items-center justify-between">
+                <span class="text-xs font-semibold uppercase tracking-wide text-gray-500">Original Email</span>
+                <div class="flex items-center gap-2 text-xs">
+                  <button @click="rawMode = 'html'"
+                    :class="rawMode === 'html' ? 'text-indigo-400' : 'text-gray-600 hover:text-gray-400'">HTML</button>
+                  <span class="text-gray-700">·</span>
+                  <button @click="rawMode = 'text'"
+                    :class="rawMode === 'text' ? 'text-indigo-400' : 'text-gray-600 hover:text-gray-400'">Text</button>
+                </div>
+              </div>
+              <div class="p-0">
+                <template x-if="rawLoading">
+                  <div class="px-5 py-8 text-center text-gray-600 text-sm flex items-center justify-center gap-2">
+                    <span class="spinner"></span> Loading original…
+                  </div>
+                </template>
+                <template x-if="!rawLoading && rawMode === 'html' && rawHtml">
+                  <!-- sandbox="" disables scripts/forms/same-origin → no XSS -->
+                  <iframe :srcdoc="rawHtml" sandbox="" referrerpolicy="no-referrer" class="w-full bg-white"
+                    style="height: 70vh; border: 0;"></iframe>
+                </template>
+                <template x-if="!rawLoading && rawMode === 'html' && !rawHtml">
+                  <div class="px-5 py-8 text-center text-gray-600 text-sm">No HTML body available.</div>
+                </template>
+                <template x-if="!rawLoading && rawMode === 'text'">
+                  <pre class="plan-text m-4" style="max-height:70vh"
+                    x-text="rawText || 'No text body available.'"></pre>
+                </template>
+              </div>
+            </div>
+
+            <div class="h-16"></div>
+          </div>
+        </template>
+      </div>
+
+      <!-- ================================================================
+         Operator History (preserved from v1)
+         ================================================================ -->
+      <div class="flex-1 overflow-auto px-6 py-6" x-show="view === 'operator-history'">
+        <h2 class="text-lg font-bold text-white mb-4">
+          📋 Operator History
+          <span class="text-sm font-normal text-gray-500 ml-1" x-show="!archiveLoading"
+            x-text="'(' + archiveEntries.length + ')'"></span>
+        </h2>
+        <template x-if="archiveLoading">
+          <div class="text-gray-500 text-sm">Loading archive…</div>
+        </template>
+        <template x-if="!archiveLoading && archiveEntries.length > 0 && sortedArchiveEntries.length === 0">
+          <div class="text-gray-500 text-sm mt-2">No rows match the current filters.</div>
+        </template>
+        <template x-if="!archiveLoading && archiveEntries.length > 0">
+          <div class="flex flex-wrap gap-3 mb-4">
+            <input type="text" x-model="archiveSearch" placeholder="Search…"
+              class="bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded px-3 py-1.5 w-56 focus:outline-none focus:border-indigo-500 placeholder-gray-600" />
+            <select x-model="archiveFilterInstruction"
+              class="bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded px-3 py-1.5 focus:outline-none focus:border-indigo-500">
+              <option value="">All instructions</option>
+              <template x-for="opt in archiveInstructionOptions" :key="opt">
+                <option :value="opt" x-text="opt"></option>
+              </template>
+            </select>
+            <button @click="archiveSearch = ''; archiveFilterInstruction = ''"
+              class="bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs rounded px-3 py-1.5 focus:outline-none">Clear</button>
+            <span class="text-gray-600 text-xs self-center"
+              x-text="sortedArchiveEntries.length + ' / ' + archiveEntries.length + ' rows'"></span>
+          </div>
+        </template>
+        <template x-if="!archiveLoading && archiveEntries.length > 0">
+          <div class="overflow-x-auto rounded-lg border border-gray-800">
+            <table class="w-full text-xs text-gray-300 border-collapse">
+              <thead>
+                <tr class="bg-gray-800/80 text-gray-400 uppercase tracking-wide">
+                  <th @click="archiveSortBy('id')"
+                    class="px-3 py-2 text-left cursor-pointer select-none whitespace-nowrap hover:text-gray-200">ID
+                    <span x-text="archiveSortIcon('id')"></span>
+                  </th>
+                  <th @click="archiveSortBy('envelope.from')"
+                    class="px-3 py-2 text-left cursor-pointer select-none whitespace-nowrap hover:text-gray-200">From
+                    <span x-text="archiveSortIcon('envelope.from')"></span>
+                  </th>
+                  <th @click="archiveSortBy('apply.applied_at')"
+                    class="px-3 py-2 text-left cursor-pointer select-none whitespace-nowrap hover:text-gray-200">Applied
+                    <span x-text="archiveSortIcon('apply.applied_at')"></span>
+                  </th>
+                  <th @click="archiveSortBy('summary.headline')"
+                    class="px-3 py-2 text-left cursor-pointer select-none whitespace-nowrap hover:text-gray-200">
+                    Headline <span x-text="archiveSortIcon('summary.headline')"></span></th>
+                  <th @click="archiveSortBy('summary.description')"
+                    class="px-3 py-2 text-left cursor-pointer select-none whitespace-nowrap hover:text-gray-200">
+                    Description <span x-text="archiveSortIcon('summary.description')"></span></th>
+                  <th @click="archiveSortBy('recommendation.journal_id')"
+                    class="px-3 py-2 text-left cursor-pointer select-none whitespace-nowrap hover:text-gray-200">Journal
+                    ID <span x-text="archiveSortIcon('recommendation.journal_id')"></span></th>
+                  <th @click="archiveSortBy('journal_meta.confirmed_count')"
+                    class="px-3 py-2 text-left cursor-pointer select-none whitespace-nowrap hover:text-gray-200">
+                    Confirms <span x-text="archiveSortIcon('journal_meta.confirmed_count')"></span></th>
+                  <th @click="archiveSortBy('recommendation.operations')"
+                    class="px-3 py-2 text-left cursor-pointer select-none whitespace-nowrap hover:text-gray-200">Rec.
+                    Ops <span x-text="archiveSortIcon('recommendation.operations')"></span></th>
+                  <th @click="archiveSortBy('recommendation.confidence')"
+                    class="px-3 py-2 text-left cursor-pointer select-none whitespace-nowrap hover:text-gray-200">Conf
+                    <span x-text="archiveSortIcon('recommendation.confidence')"></span>
+                  </th>
+                  <th @click="archiveSortBy('execution.instruction')"
+                    class="px-3 py-2 text-left cursor-pointer select-none whitespace-nowrap hover:text-gray-200">
+                    Instruction <span x-text="archiveSortIcon('execution.instruction')"></span></th>
+                  <th class="px-3 py-2 text-left select-none whitespace-nowrap text-gray-400">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="entry in sortedArchiveEntries" :key="entry.id">
+                  <tr class="border-t border-gray-800 hover:bg-gray-800/40 transition-colors">
+                    <td class="px-3 py-2 font-mono whitespace-nowrap">
+                      <button @click="copyArchiveId(entry.id)"
+                        class="text-gray-500 hover:text-indigo-400 transition-colors flex items-center gap-1"
+                        :title="archiveCopied === entry.id ? 'Copied!' : 'Copy ID'">
+                        <i x-show="archiveCopied !== entry.id" class="ph-bold ph-clipboard text-xs"
+                          aria-hidden="true"></i>
+                        <i x-show="archiveCopied === entry.id" class="ph-bold ph-check text-green-400 text-xs"
+                          aria-hidden="true"></i>
+                        <span x-text="entry.id"></span>
+                      </button>
+                    </td>
+                    <td class="px-3 py-2 max-w-[180px] truncate" x-text="entry.envelope?.from || '—'"></td>
+                    <td class="px-3 py-2 whitespace-nowrap text-gray-500" :title="entry.apply?.applied_at || ''"
+                      x-text="relativeTime(entry.apply?.applied_at)"></td>
+                    <td class="px-3 py-2 max-w-[220px] truncate" x-text="entry.summary?.headline || '—'"></td>
+                    <td class="px-3 py-2 max-w-[260px] truncate text-gray-500"
+                      x-text="entry.summary?.description || entry.summary?.text?.replace(/^.*\n+/, '').trim() || '—'">
+                    </td>
+                    <td class="px-3 py-2 whitespace-nowrap text-gray-500 font-mono text-xs"
+                      x-text="entry.recommendation?.journal_id != null ? entry.recommendation.journal_id : '\u2014'">
+                    </td>
+                    <td class="px-3 py-2 whitespace-nowrap" :title="archiveConfirmTooltip(entry)">
+                      <template x-if="entry.journal_meta?.confirmed_count != null">
+                        <span
+                          :class="'inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ' +
+                          (entry.journal_meta.confirmed_count >= 10 ? 'bg-green-900/60 text-green-300' :
+                           entry.journal_meta.confirmed_count >= 3  ? 'bg-yellow-900/60 text-yellow-300' :
+                           entry.journal_meta.confirmed_count >= 1  ? 'bg-gray-700 text-gray-300' : 'bg-gray-800 text-gray-600')"
+                          x-text="entry.journal_meta.confirmed_count"></span>
+                      </template>
+                      <template x-if="entry.journal_meta?.confirmed_count == null"><span
+                          class="text-gray-700">—</span></template>
+                    </td>
+                    <td class="px-3 py-2 whitespace-nowrap" :title="entry.recommendation?.rationale || ''">
+                      <span
+                        :class="'px-2 py-0.5 rounded text-xs font-medium ' + recChipClass(entry.recommendation?.operations)"
+                        x-text="entry.recommendation?.operations || '—'"></span>
+                    </td>
+                    <td class="px-3 py-2 whitespace-nowrap">
+                      <template x-if="entry.recommendation?.confidence != null">
+                        <span class="inline-flex items-center gap-1.5">
+                          <span class="inline-block rounded-sm overflow-hidden align-middle"
+                            style="width:40px;height:7px;background:#1f2937">
+                            <span class="block h-full rounded-sm"
+                              :style="{ width: entry.recommendation.confidence + '%', background: confMeterColor(entry.recommendation.confidence) }"></span>
+                          </span>
+                          <span class="text-gray-400 text-xs" x-text="entry.recommendation.confidence + '%'"></span>
+                        </span>
+                      </template>
+                      <template x-if="entry.recommendation?.confidence == null"><span
+                          class="text-gray-700">—</span></template>
+                    </td>
+                    <td class="px-3 py-2 whitespace-nowrap" :title="entry.operator_input?.instruction || ''">
+                      <span
+                        :class="'px-2 py-0.5 rounded text-xs font-medium ' + recChipClass(entry.operator_input?._parsed_operation)"
+                        x-text="entry.operator_input?._parsed_operation || '—'"></span>
+                    </td>
+                    <td class="px-3 py-2 whitespace-nowrap">
+                      <button @click="confirmArchiveDelete(entry.id)" title="Delete from archive"
+                        class="text-gray-600 hover:text-red-400 transition-colors">
+                        <i class="ph-bold ph-trash text-sm" aria-hidden="true"></i>
+                      </button>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </template>
+        <template x-if="archiveDeleteId">
+          <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+            <div class="bg-gray-900 border border-gray-700 rounded-xl px-6 py-5 shadow-2xl max-w-sm w-full mx-4">
+              <h3 class="text-white font-semibold text-sm mb-2">Delete archived entry?</h3>
+              <p class="text-gray-400 text-xs mb-4">This will permanently delete <span class="font-mono text-gray-300"
+                  x-text="archiveDeleteId"></span> from the archive folder. This cannot be undone.</p>
+              <div class="flex justify-end gap-2">
+                <button @click="cancelArchiveDelete()"
+                  class="px-3 py-1.5 text-xs rounded bg-gray-800 border border-gray-700 text-gray-300 hover:bg-gray-700 transition-colors">Cancel</button>
+                <button @click="deleteArchiveEntry()"
+                  class="px-3 py-1.5 text-xs rounded bg-red-900 border border-red-700 text-red-200 hover:bg-red-800 transition-colors font-semibold">Delete</button>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <!-- ================================================================
+         Trial History (preserved from v1)
+         ================================================================ -->
+      <div class="flex-1 overflow-auto px-6 py-6" x-show="view === 'trial-history'">
+        <h2 class="text-lg font-bold text-white mb-4">
+          🧪 Trial History
+          <span class="text-sm font-normal text-gray-500 ml-1" x-show="!trialLoading"
+            x-text="'(' + trialEntries.length + ')'"></span>
+        </h2>
+        <template x-if="trialLoading">
+          <div class="text-gray-500 text-sm">Loading trials…</div>
+        </template>
+        <template x-if="!trialLoading && trialEntries.length === 0">
+          <div class="text-gray-500 text-sm mt-2">No trial report-cards found.</div>
+        </template>
+        <template x-if="!trialLoading && trialChartEntries.length > 0">
+          <div class="mb-5 bg-gray-900/60 border border-gray-800 rounded-lg px-4 pt-3 pb-0">
+            <div class="flex justify-between items-center mb-2">
+              <span class="text-xs text-gray-600 uppercase tracking-widest"
+                x-text="trialChartLabel + ' per Trial'"></span>
+              <span class="text-xs text-gray-700 font-mono" x-text="'max: ' + maxTrialChartVal"></span>
+            </div>
+            <div class="relative" style="height: 80px">
+              <div class="absolute inset-x-0 top-0 border-t border-gray-800/50 pointer-events-none"></div>
+              <div class="absolute inset-x-0 border-t border-gray-800/40 pointer-events-none" style="top:25%"></div>
+              <div class="absolute inset-x-0 border-t border-gray-800/40 pointer-events-none" style="top:50%"></div>
+              <div class="absolute inset-x-0 border-t border-gray-800/40 pointer-events-none" style="top:75%"></div>
+              <div class="absolute inset-x-0 bottom-0 border-t border-gray-700 pointer-events-none"></div>
+              <div class="absolute inset-0 flex items-end gap-px">
+                <template x-for="trial in trialChartEntries" :key="trial.id">
+                  <div class="flex-1 relative group" style="min-width:0">
+                    <div
+                      class="hidden group-hover:block absolute bottom-full left-1/2 -translate-x-1/2 mb-1 z-10 bg-gray-800 border border-gray-700 text-xs text-gray-200 px-2 py-1 rounded whitespace-nowrap pointer-events-none"
+                      x-text="trialChartTooltip(trial)"></div>
+                    <div class="w-full bg-indigo-600 hover:bg-indigo-500 transition-colors"
+                      :style="{ height: (_trialChartVal(trial, trialChartMetric) / maxTrialChartVal * 80) + 'px' }">
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+            <div class="flex gap-px pt-1 pb-2">
+              <template x-for="trial in trialChartEntries" :key="trial.id">
+                <div class="flex-1 text-center text-gray-700 overflow-hidden"
+                  style="font-size:9px;font-family:monospace" x-text="trial.id"></div>
+              </template>
+            </div>
+          </div>
+        </template>
+        <template x-if="!trialLoading && trialEntries.length > 0">
+          <div class="overflow-x-auto rounded-lg border border-gray-800">
+            <table class="w-full text-xs text-gray-300 border-collapse">
+              <thead>
+                <tr class="bg-gray-800/80 text-gray-400 uppercase tracking-wide">
+                  <th @click="trialSortBy('id')"
+                    class="px-3 py-2 text-left cursor-pointer select-none whitespace-nowrap hover:text-gray-200">Trial
+                    ID <span x-text="trialSortIcon('id')"></span></th>
+                  <th @click="trialSortBy('date')"
+                    class="px-3 py-2 text-left cursor-pointer select-none whitespace-nowrap hover:text-gray-200">Date
+                    <span x-text="trialSortIcon('date')"></span>
+                  </th>
+                  <th @click="trialSortBy('duration')"
+                    class="px-3 py-2 text-left cursor-pointer select-none whitespace-nowrap hover:text-gray-200">
+                    Duration <span x-text="trialSortIcon('duration')"></span>
+                    <button @click.stop="setTrialChartMetric('duration')"
+                      :class="trialChartMetric === 'duration' ? 'text-indigo-400' : 'text-gray-700 hover:text-gray-400'"
+                      class="ml-1 transition-colors align-middle"><i class="ph-bold ph-chart-bar text-xs"
+                        aria-hidden="true"></i></button>
+                  </th>
+                  <th @click="trialSortBy('passing')"
+                    class="px-3 py-2 text-left cursor-pointer select-none whitespace-nowrap hover:text-gray-200">Passing
+                    <span x-text="trialSortIcon('passing')"></span>
+                    <button @click.stop="setTrialChartMetric('passing')"
+                      :class="trialChartMetric === 'passing' ? 'text-indigo-400' : 'text-gray-700 hover:text-gray-400'"
+                      class="ml-1 transition-colors align-middle"><i class="ph-bold ph-chart-bar text-xs"
+                        aria-hidden="true"></i></button>
+                  </th>
+                  <th @click="trialSortBy('total')"
+                    class="px-3 py-2 text-left cursor-pointer select-none whitespace-nowrap hover:text-gray-200">Total
+                    <span x-text="trialSortIcon('total')"></span>
+                    <button @click.stop="setTrialChartMetric('total')"
+                      :class="trialChartMetric === 'total' ? 'text-indigo-400' : 'text-gray-700 hover:text-gray-400'"
+                      class="ml-1 transition-colors align-middle"><i class="ph-bold ph-chart-bar text-xs"
+                        aria-hidden="true"></i></button>
+                  </th>
+                  <th @click="trialSortBy('score')"
+                    class="px-3 py-2 text-left cursor-pointer select-none whitespace-nowrap hover:text-gray-200">Score
+                    <span x-text="trialSortIcon('score')"></span>
+                    <button @click.stop="setTrialChartMetric('score')"
+                      :class="trialChartMetric === 'score' ? 'text-indigo-400' : 'text-gray-700 hover:text-gray-400'"
+                      class="ml-1 transition-colors align-middle"><i class="ph-bold ph-chart-bar text-xs"
+                        aria-hidden="true"></i></button>
+                  </th>
+                  <th @click="trialSortBy('grade')"
+                    class="px-3 py-2 text-left cursor-pointer select-none whitespace-nowrap hover:text-gray-200">Grade
+                    <span x-text="trialSortIcon('grade')"></span>
+                    <button @click.stop="setTrialChartMetric('grade')"
+                      :class="trialChartMetric === 'grade' ? 'text-indigo-400' : 'text-gray-700 hover:text-gray-400'"
+                      class="ml-1 transition-colors align-middle"><i class="ph-bold ph-chart-bar text-xs"
+                        aria-hidden="true"></i></button>
+                  </th>
+                  <th class="px-3 py-2 text-left select-none whitespace-nowrap text-gray-400">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="trial in sortedTrialEntries" :key="trial.id">
+                  <tr class="border-t border-gray-800 hover:bg-gray-800/40 transition-colors">
+                    <td class="px-3 py-2 font-mono whitespace-nowrap">
+                      <button @click="copyTrialId(trial.id)"
+                        class="text-gray-500 hover:text-indigo-400 transition-colors flex items-center gap-1"
+                        :title="trialCopied === trial.id ? 'Copied!' : 'Copy ID'">
+                        <i x-show="trialCopied !== trial.id" class="ph-bold ph-clipboard text-xs"
+                          aria-hidden="true"></i>
+                        <i x-show="trialCopied === trial.id" class="ph-bold ph-check text-green-400 text-xs"
+                          aria-hidden="true"></i>
+                        <span x-text="trial.id"></span>
+                      </button>
+                    </td>
+                    <td class="px-3 py-2 whitespace-nowrap text-gray-500"
+                      :title="trial.date ? new Date(trial.date).toLocaleString() : ''"
+                      x-text="relativeTime(trial.date)"></td>
+                    <td class="px-3 py-2 whitespace-nowrap text-gray-500"
+                      :title="trial.duration_ms != null ? durationRelative(trial.duration_ms) + ' total run time' : 'No duration data'"
+                      x-text="durationRelative(trial.duration_ms)"></td>
+                    <td class="px-3 py-2 whitespace-nowrap font-mono"
+                      x-text="trial.passing != null ? trial.passing : '\u2014'"></td>
+                    <td class="px-3 py-2 whitespace-nowrap font-mono text-gray-500"
+                      x-text="trial.total != null ? trial.total : '\u2014'"></td>
+                    <td class="px-3 py-2 whitespace-nowrap">
+                      <template x-if="trial.score != null">
+                        <span class="inline-flex items-center gap-1.5">
+                          <span class="inline-block rounded-sm overflow-hidden align-middle"
+                            style="width:40px;height:7px;background:#1f2937">
+                            <span class="block h-full rounded-sm"
+                              :style="{ width: trial.score + '%', background: confMeterColor(trial.score) }"></span>
+                          </span>
+                          <span class="text-gray-400 text-xs" x-text="trial.score + '%'"></span>
+                        </span>
+                      </template>
+                      <template x-if="trial.score == null"><span class="text-gray-700">—</span></template>
+                    </td>
+                    <td class="px-3 py-2 whitespace-nowrap font-bold" :class="trialGradeColor(trial.grade)"
+                      x-text="trial.grade ?? '\u2014'"></td>
+                    <td class="px-3 py-2 whitespace-nowrap flex items-center gap-2">
+                      <button @click="confirmTrialPromote(trial.id)" title="Promote trial → personal-email"
+                        class="text-gray-600 hover:text-indigo-400 transition-colors"><i
+                          class="ph-bold ph-arrow-circle-up text-sm" aria-hidden="true"></i></button>
+                      <button @click="confirmTrialDelete(trial.id)" title="Delete trial folder"
+                        class="text-gray-600 hover:text-red-400 transition-colors"><i class="ph-bold ph-trash text-sm"
+                          aria-hidden="true"></i></button>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </template>
+        <template x-if="trialDeleteId">
+          <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+            <div class="bg-gray-900 border border-gray-700 rounded-xl px-6 py-5 shadow-2xl max-w-sm w-full mx-4">
+              <h3 class="text-white font-semibold text-sm mb-2">Delete trial folder?</h3>
+              <p class="text-gray-400 text-xs mb-4">This will permanently delete trial <span
+                  class="font-mono text-gray-300" x-text="trialDeleteId"></span> and all its contents from disk. This
+                cannot be undone.</p>
+              <div class="flex justify-end gap-2">
+                <button @click="cancelTrialDelete()"
+                  class="px-3 py-1.5 text-xs rounded bg-gray-800 border border-gray-700 text-gray-300 hover:bg-gray-700 transition-colors">Cancel</button>
+                <button @click="deleteTrialEntry()"
+                  class="px-3 py-1.5 text-xs rounded bg-red-900 border border-red-700 text-red-200 hover:bg-red-800 transition-colors font-semibold">Delete</button>
+              </div>
+            </div>
+          </div>
+        </template>
+        <template x-if="trialPromoteId">
+          <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+            <div class="bg-gray-900 border border-gray-700 rounded-xl px-6 py-5 shadow-2xl max-w-md w-full mx-4">
+              <h3 class="text-white font-semibold text-sm mb-2">Promote trial to personal-email?</h3>
+              <p class="text-gray-400 text-xs mb-1">This will run <span class="font-mono text-gray-300">bun
+                  trial-runner/agent.coffee --promote <span x-text="trialPromoteId"></span></span>, backing up and
+                merging this trial's journal into <span class="font-mono text-gray-300">personal-email/db/</span>.</p>
+              <template x-if="trialPromoteResult">
+                <div class="mt-3 mb-2">
+                  <template x-if="trialPromoteResult.ok">
+                    <div class="text-green-400 text-xs font-semibold">✓ Promoted successfully.</div>
+                  </template>
+                  <template x-if="!trialPromoteResult.ok">
+                    <div>
+                      <div class="text-red-400 text-xs font-semibold mb-1">✗ Promote failed.</div>
+                      <pre
+                        class="text-red-300 text-xs bg-gray-800 rounded p-2 overflow-auto max-h-32 whitespace-pre-wrap"
+                        x-text="trialPromoteResult.error"></pre>
+                    </div>
+                  </template>
+                </div>
+              </template>
+              <div class="flex justify-end gap-2 mt-4">
+                <button @click="cancelTrialPromote()" :disabled="trialPromoting"
+                  class="px-3 py-1.5 text-xs rounded bg-gray-800 border border-gray-700 text-gray-300 hover:bg-gray-700 transition-colors disabled:opacity-50">Cancel</button>
+                <button @click="promoteTrialEntry()" :disabled="trialPromoting || trialPromoteResult?.ok"
+                  class="px-3 py-1.5 text-xs rounded bg-indigo-900 border border-indigo-700 text-indigo-200 hover:bg-indigo-800 transition-colors font-semibold disabled:opacity-50 flex items-center gap-1.5">
+                  <template x-if="trialPromoting"><span>Promoting…</span></template>
+                  <template x-if="!trialPromoting"><span>Promote</span></template>
+                </button>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <!-- ================================================================
+           Trial Run (preserved from v1)
+           ================================================================ -->
+      <div class="flex-1 overflow-auto px-6 py-6" x-show="view === 'trial-run'"
+        x-init="if(view==='trial-run') loadTrialRunStatus()">
+        <h2 class="text-lg font-bold text-white mb-4">🏃 Trial Run</h2>
+        <template x-if="trialRunError">
+          <div
+            class="mb-4 px-4 py-2 rounded-lg bg-red-900/50 border border-red-700 text-red-300 text-sm flex items-center justify-between">
+            <span x-text="trialRunError"></span>
+            <button @click="trialRunError = null" class="ml-3 text-red-400 hover:text-red-200">✕</button>
+          </div>
+        </template>
+        <div class="mb-5 flex items-center gap-3 flex-wrap">
+          <template x-if="trialRunStatus.running">
+            <span
+              class="flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-900/60 border border-green-700 text-green-300 text-xs font-semibold">
+              <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+              Running — run <span class="font-mono ml-1" x-text="trialRunStatus.lock?.run_id ?? '?'"></span> &nbsp;· pid
+              <span class="font-mono" x-text="trialRunStatus.lock?.pid ?? '?'"></span>
+            </span>
+          </template>
+          <template x-if="!trialRunStatus.running">
+            <span
+              class="flex items-center gap-1.5 px-3 py-1 rounded-full bg-gray-800 border border-gray-700 text-gray-400 text-xs">
+              <span class="w-2 h-2 rounded-full bg-gray-600"></span> Idle
+            </span>
+          </template>
+          <template x-if="trialRunStatus.running">
+            <span class="text-xs text-gray-500">Elapsed: <span class="text-gray-300 font-mono"
+                x-text="trialRunElapsed()"></span> &nbsp;· ETA: <span class="text-gray-300 font-mono"
+                x-text="trialRunEta()"></span></span>
+          </template>
+          <div class="ml-auto flex items-center gap-2">
+            <template x-if="!trialRunStatus.running">
+              <input x-model="trialRunFromId" type="text" placeholder="--from-id (optional)"
+                class="px-2 py-1 text-xs rounded bg-gray-800 border border-gray-700 text-gray-300 placeholder-gray-600 font-mono w-44" />
+            </template>
+            <button @click="loadTrialRunStatus()" :disabled="trialRunLoading"
+              class="px-3 py-1.5 text-xs rounded bg-gray-800 border border-gray-700 text-gray-300 hover:bg-gray-700 transition-colors disabled:opacity-50"
+              title="Refresh status">↻</button>
+            <template x-if="!trialRunStatus.running">
+              <button @click="startTrialRun()" :disabled="trialRunStarting"
+                class="px-4 py-1.5 text-xs rounded bg-indigo-900 border border-indigo-700 text-indigo-200 hover:bg-indigo-800 transition-colors font-semibold disabled:opacity-50 flex items-center gap-1.5">
+                <template x-if="trialRunStarting"><span>Starting…</span></template>
+                <template x-if="!trialRunStarting"><span>▶ Start</span></template>
+              </button>
+            </template>
+            <template x-if="trialRunStatus.running">
+              <button @click="stopTrialRun()" :disabled="trialRunStopping"
+                class="px-4 py-1.5 text-xs rounded bg-red-900 border border-red-700 text-red-200 hover:bg-red-800 transition-colors font-semibold disabled:opacity-50 flex items-center gap-1.5">
+                <template x-if="trialRunStopping"><span>Stopping…</span></template>
+                <template x-if="!trialRunStopping"><span>■ Stop</span></template>
+              </button>
+            </template>
+          </div>
+        </div>
+        <template x-if="trialRunStatus.progress">
+          <div>
+            <template x-if="!trialRunStatus.running">
+              <div class="mb-3 flex items-center gap-2">
+                <span
+                  class="px-2 py-0.5 rounded text-xs bg-gray-800 border border-gray-700 text-gray-500 font-mono">Last
+                  run: <span x-text="trialRunStatus.progress?.run_id ?? '—'"></span></span>
+                <span class="text-xs text-gray-600" x-text="relativeTime(trialRunStatus.progress?.updated_at)"></span>
+              </div>
+            </template>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+              <div class="bg-gray-900/60 border border-gray-800 rounded-lg px-4 py-3">
+                <div class="text-xs text-gray-500 uppercase tracking-wide mb-2">Progress</div>
+                <div class="flex items-end gap-3">
+                  <div>
+                    <div class="text-2xl font-bold text-white font-mono" x-text="trialRunMetric('summary.processed')">
+                    </div>
+                    <div class="text-xs text-gray-500">processed</div>
+                  </div>
+                  <div class="text-gray-700 text-xl">/</div>
+                  <div>
+                    <div class="text-xl font-semibold text-gray-400 font-mono" x-text="trialRunMetric('summary.total')">
+                    </div>
+                    <div class="text-xs text-gray-600">total</div>
+                  </div>
+                  <div class="ml-auto text-right">
+                    <div class="text-sm text-blue-400 font-mono" x-text="trialRunMetric('summary.in_flight')"></div>
+                    <div class="text-xs text-gray-600">in-flight</div>
+                  </div>
+                </div>
+                <div class="mt-2 rounded-full overflow-hidden h-1.5 bg-gray-800">
+                  <div class="h-full bg-indigo-600 transition-all duration-500 rounded-full"
+                    :style="{ width: (trialRunStatus.progress?.summary?.total > 0 ? (trialRunStatus.progress.summary.processed / trialRunStatus.progress.summary.total * 100) : 0) + '%' }">
+                  </div>
+                </div>
+              </div>
+              <div class="bg-gray-900/60 border border-gray-800 rounded-lg px-4 py-3">
+                <div class="text-xs text-gray-500 uppercase tracking-wide mb-2">Results</div>
+                <div class="flex items-end gap-3">
+                  <div>
+                    <div class="text-2xl font-bold text-green-400 font-mono" x-text="trialRunMetric('summary.passed')">
+                    </div>
+                    <div class="text-xs text-gray-500">passed</div>
+                  </div>
+                  <div>
+                    <div class="text-xl font-semibold text-red-400 font-mono" x-text="trialRunMetric('summary.failed')">
+                    </div>
+                    <div class="text-xs text-gray-600">failed</div>
+                  </div>
+                  <div class="ml-auto text-right">
+                    <div class="text-lg font-bold font-mono"
+                      :class="(trialRunStatus.progress?.summary?.pass_rate ?? 0) >= 80 ? 'text-green-400' : (trialRunStatus.progress?.summary?.pass_rate ?? 0) >= 60 ? 'text-yellow-400' : 'text-red-400'"
+                      x-text="(trialRunMetric('summary.pass_rate') !== '—' ? trialRunMetric('summary.pass_rate') + '%' : '—')">
+                    </div>
+                    <div class="text-xs text-gray-600">pass rate</div>
+                  </div>
+                </div>
+              </div>
+              <div class="bg-gray-900/60 border border-gray-800 rounded-lg px-4 py-3">
+                <div class="text-xs text-gray-500 uppercase tracking-wide mb-2">Coaching</div>
+                <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                  <div class="text-gray-500">First-try pass</div>
+                  <div class="text-right font-mono text-gray-300" x-text="trialRunMetric('coach_stats.first_try_pass')">
+                  </div>
+                  <div class="text-gray-500">Needed coaching</div>
+                  <div class="text-right font-mono text-gray-300"
+                    x-text="trialRunMetric('coach_stats.emails_needing_coaching')"></div>
+                  <div class="text-gray-500">Rounds min/max</div>
+                  <div class="text-right font-mono text-gray-300"
+                    x-text="(trialRunMetric('coach_stats.rounds_min') !== '—' ? trialRunMetric('coach_stats.rounds_min') + ' / ' + trialRunMetric('coach_stats.rounds_max') : '—')">
+                  </div>
+                  <div class="text-gray-500">Mean rounds</div>
+                  <div class="text-right font-mono text-gray-300" x-text="trialRunMetric('coach_stats.rounds_mean')">
+                  </div>
+                </div>
+              </div>
+              <div class="bg-gray-900/60 border border-gray-800 rounded-lg px-4 py-3">
+                <div class="text-xs text-gray-500 uppercase tracking-wide mb-2">Round Timing</div>
+                <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                  <div class="text-gray-500">Min</div>
+                  <div class="text-right font-mono text-gray-300"
+                    x-text="trialRunStatus.progress?.timing?.round_ms_min != null ? durationRelative(trialRunStatus.progress.timing.round_ms_min) : '—'">
+                  </div>
+                  <div class="text-gray-500">Max</div>
+                  <div class="text-right font-mono text-gray-300"
+                    x-text="trialRunStatus.progress?.timing?.round_ms_max != null ? durationRelative(trialRunStatus.progress.timing.round_ms_max) : '—'">
+                  </div>
+                  <div class="text-gray-500">Mean</div>
+                  <div class="text-right font-mono text-gray-300"
+                    x-text="trialRunStatus.progress?.timing?.round_ms_mean != null ? durationRelative(trialRunStatus.progress.timing.round_ms_mean) : '—'">
+                  </div>
+                </div>
+              </div>
+              <div class="bg-gray-900/60 border border-gray-800 rounded-lg px-4 py-3">
+                <div class="text-xs text-gray-500 uppercase tracking-wide mb-2">ETA</div>
+                <div class="text-lg font-semibold text-gray-300 font-mono" x-text="trialRunEta()"></div>
+                <div class="text-xs text-gray-600 mt-0.5">estimated completion</div>
+                <div class="mt-2 text-xs text-gray-500">Elapsed: <span class="font-mono text-gray-400"
+                    x-text="trialRunElapsed()"></span></div>
+              </div>
+              <div class="bg-gray-900/60 border border-gray-800 rounded-lg px-4 py-3">
+                <div class="text-xs text-gray-500 uppercase tracking-wide mb-2">Last Update</div>
+                <div class="text-sm text-gray-400" x-text="relativeTime(trialRunStatus.progress?.updated_at)"></div>
+                <div class="text-xs text-gray-600 mt-0.5 font-mono truncate"
+                  x-text="trialRunStatus.progress?.updated_at ?? '—'"></div>
+                <div class="mt-2 text-xs text-gray-600">Run: <span class="font-mono text-gray-500"
+                    x-text="trialRunStatus.progress?.run_id ?? '—'"></span></div>
+              </div>
+            </div>
+            <template x-if="trialRunStatus.progress?.recent_coach_log?.length > 0">
+              <div>
+                <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-2">Recent Coach Log</h3>
+                <div class="overflow-x-auto rounded-lg border border-gray-800">
+                  <table class="w-full text-xs text-gray-300 border-collapse">
+                    <thead>
+                      <tr class="bg-gray-800/80 text-gray-400 uppercase tracking-wide text-xs">
+                        <th class="px-3 py-2 text-left">ID</th>
+                        <th class="px-3 py-2 text-left">Time</th>
+                        <th class="px-3 py-2 text-left">Result</th>
+                        <th class="px-3 py-2 text-left">Rounds</th>
+                        <th class="px-3 py-2 text-left">Advice</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <template x-for="(entry, i) in trialRunStatus.progress.recent_coach_log" :key="i">
+                        <tr class="border-t border-gray-800 hover:bg-gray-800/30 transition-colors">
+                          <td class="px-3 py-2 font-mono text-gray-500" x-text="entry.id ?? '—'"></td>
+                          <td class="px-3 py-2 text-gray-500 whitespace-nowrap" x-text="relativeTime(entry.at)"></td>
+                          <td class="px-3 py-2 whitespace-nowrap font-semibold"
+                            :class="entry.passed ? 'text-green-400' : 'text-yellow-400'"
+                            x-text="entry.passed ? '✓ pass' : '⟳ coaching'"></td>
+                          <td class="px-3 py-2 font-mono text-center text-gray-400" x-text="entry.rounds ?? '—'"></td>
+                          <td class="px-3 py-2 text-gray-400 max-w-xs truncate" :title="entry.advice ?? ''"
+                            x-text="entry.advice ?? (entry.passed ? '—' : 'see logs')"></td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </template>
+          </div>
+        </template>
+        <template x-if="!trialRunStatus.progress && !trialRunStatus.running">
+          <div class="text-gray-600 text-sm mt-6">No trial runs found. Press ▶ Start to begin.</div>
+        </template>
+        <template x-if="!trialRunStatus.progress && trialRunStatus.running">
+          <div class="text-gray-500 text-sm mt-6 animate-pulse">Waiting for first progress update…</div>
+        </template>
+      </div>
+
+    </main>
+  </div>
+
+</body>
+
+</html>

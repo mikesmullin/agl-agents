@@ -19,6 +19,7 @@ Browser-based heads-up displays for human operators to monitor, triage, and orch
 | UI | Purpose |
 | --- | --- |
 | [email-trainer](./email-trainer/) | Triage HUD for the personal-email pipeline. Displays live entity cards, exposes quick-action buttons and hotkeys for gated human inputs (instruction, rationale, approval), and streams real-time state changes over WebSocket as the agent processes emails in bulk. |
+| [email-trainer-2](./email-trainer-2/) | Gmail/Outlook-style redesign of email-trainer. Same WebSocket data flow, but a classic inbox layout: a fixed toolbar (Proceed, Approve, Skip, Spam, Delete, Archive, Move) over a multi-select email list, a progressive-disclosure action bar, a full-page email detail view with the original email rendered in a sandboxed iframe, hash routing, and keyboard-driven bulk triage. |
 
 ## Repository Layout
 

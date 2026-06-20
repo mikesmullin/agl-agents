@@ -1,0 +1,13 @@
+{
+  "name": "email-trainer-2",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "bun server.coffee"
+  },
+  "dependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "bun-coffeescript": "^1.0.3",
+    "js-yaml": "^4.1.1"
+  }
+}
