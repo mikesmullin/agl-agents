@@ -1,0 +1,20 @@
+[package]
+name = "mail1-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "mail1 backend — the rustex1 dev server, a from-scratch Gmail REST client, and the SQLite mirror + mutation queue"
+
+[[bin]]
+name = "mail1-server"
+path = "src/main.rs"
+
+[dependencies]
+rustex1-devserver = { path = "../vendor/rustex1/devserver" }
+serde_json = "1"
+rusqlite = { version = "0.40", features = ["bundled"] }
+ureq = { version = "2", features = ["json"] }
+base64 = "0.22"
+regex = "1.13.1"
+serde_yaml = "0.9.34"
+# no chrono: the one timestamp format this app needs is derived by hand in db.rs

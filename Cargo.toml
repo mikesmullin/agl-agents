@@ -1,0 +1,21 @@
+[workspace]
+resolver = "2"
+members = ["app", "server"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+# Copied from the kit's workspace — the dev server builds the wasm half from
+# *this* root, so the profile has to exist here. (vendor/rustex1/docs/RUST_M_JS.md)
+[profile.wasm]
+inherits = "release"
+opt-level = "s"
+debug = false
+strip = "debuginfo"
+codegen-units = 16
+lto = false
+
+[profile.release]
+opt-level = "s"

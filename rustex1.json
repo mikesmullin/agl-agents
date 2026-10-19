@@ -1,0 +1,22 @@
+{
+  "name": "mail1",
+  "port": 3030,
+  "app": {
+    "package": "mail1-app",
+    "lib": "mail1_app",
+    "watch": [
+      "app",
+      "vendor/rustex1/kit"
+    ]
+  },
+  "server": {
+    "package": "mail1-server",
+    "watch": [
+      "server",
+      "vendor/rustex1/devserver"
+    ]
+  },
+  "static": [
+    "web"
+  ]
+}

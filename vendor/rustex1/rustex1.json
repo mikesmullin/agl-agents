@@ -1,0 +1,23 @@
+{
+  "name": "rustex1",
+  "port": 3001,
+  "app": {
+    "package": "rustex1-app",
+    "lib": "rustex1_app",
+    "profile": "wasm",
+    "watch": [
+      "app",
+      "kit"
+    ]
+  },
+  "server": {
+    "package": "rustex1-server",
+    "watch": [
+      "server",
+      "devserver"
+    ]
+  },
+  "static": [
+    "web"
+  ]
+}

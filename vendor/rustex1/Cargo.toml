@@ -1,0 +1,22 @@
+[workspace]
+resolver = "2"
+members = ["devserver", "kit", "server", "app"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+# Fast-enough, small-enough profile for the wasm frontend.
+# `cargo build -p <app>-app --target wasm32-unknown-unknown --profile wasm`
+# Consumers copy this stanza into their own workspace root.
+[profile.wasm]
+inherits = "release"
+opt-level = "s"
+debug = false
+strip = "debuginfo"
+codegen-units = 16
+lto = false
+
+[profile.release]
+opt-level = "s"

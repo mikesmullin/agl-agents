@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>rustex1 · rust ⇄ wasm hot reload</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🦀</text></svg>" />
+    <!-- the kit skin (also @imports the phosphor webfont), then app overrides -->
+    <link rel="stylesheet" href="/kit.css" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <!-- m-js owns everything inside #app; the kit's app.mjs/hot.mjs create the
+         splash, the error box and the compile-overlay panels themselves -->
+    <div id="app"></div>
+
+    <script type="module" data-hmr-entry src="/app.mjs"></script>
+  </body>
+</html>

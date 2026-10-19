@@ -1,0 +1,24 @@
+[package]
+name = "rustex1-kit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Rust → wasm frontend kit for rustex1 apps: m() hyperscript, M.*/Router bindings, the this-bridge, boot-token lifecycle, template linter, HMR telemetry, and a set of ready-made m-js widgets."
+
+[lib]
+name = "rustex1_kit"
+path = "src/lib.rs"
+
+[dependencies]
+wasm-bindgen = "=0.2.129"
+wasm-bindgen-futures = "=0.4.79"
+js-sys = "=0.3.106"
+web-sys = { version = "=0.3.106", features = [
+    "Window",
+    "Document",
+    "Element",
+    "HtmlElement",
+    "SvgElement",
+    "Node",
+    "console",
+] }

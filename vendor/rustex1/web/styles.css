@@ -1,0 +1,29 @@
+/* This app's skin.
+   It loads *after* the kit's /kit.css, so anything here wins — that is the
+   override model: restyle or retheme without forking the kit.
+
+   The rustex1 demo is happy with the kit defaults, so this file is only a theme
+   tweak plus the app-specific extras. Delete it and the app still looks right. */
+
+:root {
+  /* rust-ish accent; change it and watch a stylesheet swap hot-reload with no
+     redraw at all (the {type:"change",path:"/styles.css"} path). */
+  --accent: #ff8a3d;
+  --accent-2: #ffc48a;
+}
+
+/* the demo's own widgets, whose class names appear in app/src/components.rs */
+.counter-row {
+  align-items: center;
+}
+
+.counter-value {
+  color: var(--accent-2);
+}
+
+/* keep the lint findings visually distinct from cargo's error box */
+.page .errbox + .errbox {
+  border-color: #4a3d16;
+  background: #1d1809;
+  color: #ffd98a;
+}

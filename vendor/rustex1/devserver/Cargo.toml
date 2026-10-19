@@ -1,0 +1,15 @@
+[package]
+name = "rustex1-devserver"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Reusable dev server for rustex1 apps: static files over multiple roots, JSON API, the /__m_hmr websocket, source watching, cargo+wasm-bindgen rebuilds, self-restart."
+
+[lib]
+name = "rustex1_devserver"
+path = "src/lib.rs"
+
+[dependencies]
+notify = "8.2"
+tungstenite = "0.30"
+serde_json = "1"

@@ -1,0 +1,4 @@
+target/
+web/pkg/
+tools/*.tar.gz
+tools/wasm-bindgen-*/

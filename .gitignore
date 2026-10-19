@@ -1,0 +1,9 @@
+target/
+web/pkg/
+tools/
+data/
+gmail.json
+*.log
+rules/
+phrasers/
+.venv/

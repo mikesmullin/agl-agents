@@ -1,0 +1,763 @@
+/* rustex1 kit skin — shipped by the kit, served at /kit.css.
+   An app links this first, then its own /styles.css, so anything here can be
+   overridden without forking it. Widget class names are the contract with the
+   templates in kit/src/ui.rs. */
+
+/* The phosphor webfont lives in the kit too; relative URLs resolve against
+   this file's own directory (/vendor/phosphor/*). */
+@import url("./vendor/phosphor/phosphor.css");
+
+:root {
+  --bg: #0a0e13;
+  --bg-2: #0f1620;
+  --panel: #121b26;
+  --panel-2: #16202d;
+  --line: #223041;
+  --line-2: #2c3d52;
+  --text: #dce7f2;
+  --muted: #7f93a8;
+  --accent: #ff8a3d;
+  --accent-2: #ffc48a;
+  --ok: #57d38c;
+  --busy: #56b6ff;
+  --warn: #f2c14e;
+  --err: #ff6b6b;
+  --info: #9b8cff;
+  /* every form control resolves to this one height, so a row of mixed widgets
+     (segmented, text, stepper, chips) stops on the same line */
+  --ctl-h: 30px;
+  --mono: ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: radial-gradient(1200px 600px at 15% -10%, #16222f 0%, var(--bg) 55%);
+  color: var(--text);
+  font: 14px/1.55 var(--sans);
+  min-height: 100%;
+}
+
+a { color: var(--busy); text-decoration: none; }
+code, pre { font-family: var(--mono); font-size: 12px; }
+button { font: inherit; color: inherit; }
+
+.muted { color: var(--muted); }
+.tiny { font-size: 11px; }
+.grow { flex: 1 1 auto; }
+
+/* ---------------------------------------------------------------- splash */
+
+.splash {
+  display: grid;
+  place-content: center;
+  gap: 10px;
+  text-align: center;
+  padding: 22vh 20px;
+  color: var(--muted);
+}
+#splash[hidden] { display: none; }
+.splash-ring {
+  width: 34px; height: 34px; margin: 0 auto;
+  border-radius: 50%;
+  border: 3px solid var(--line);
+  border-top-color: var(--accent);
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(1turn); } }
+
+/* ----------------------------------------------------------------- chrome */
+
+.shell { display: block; }
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 22px;
+  background: rgba(10, 14, 19, 0.86);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: center; gap: 8px; letter-spacing: 0.2px; }
+.brand i { color: var(--accent); font-size: 18px; }
+.brand b { font-weight: 650; }
+.tag {
+  font: 11px/1 var(--mono);
+  color: var(--accent-2);
+  border: 1px solid #43301f;
+  background: #1c1410;
+  border-radius: 999px;
+  padding: 4px 7px;
+}
+.nav { display: flex; gap: 2px; }
+.nav a {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 11px;
+  border-radius: 8px;
+  color: var(--muted);
+  border: 1px solid transparent;
+}
+.nav a i { font-size: 15px; }
+.nav a:hover { background: var(--panel); color: var(--text); }
+.nav a.on {
+  color: var(--text);
+  background: var(--panel-2);
+  border-color: var(--line-2);
+}
+.topbar-right { margin-left: auto; }
+
+.page { padding: 22px; max-width: 1120px; margin: 0 auto; display: grid; gap: 16px; }
+
+.hero h1 { margin: 0 0 4px; font-size: 27px; letter-spacing: -0.3px; }
+.hero .sub { margin: 0 0 12px; color: var(--muted); max-width: 66ch; }
+.hero-meta { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.card {
+  background: linear-gradient(180deg, var(--panel) 0%, var(--bg-2) 100%);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset;
+}
+.card-title {
+  display: flex; align-items: center; gap: 8px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: #c8d8e8;
+}
+.card-title i { color: var(--accent); font-size: 16px; }
+.row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.grid { display: grid; gap: 12px; }
+.grid.two { grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); align-items: start; }
+.grid.stats { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+
+.foot { padding: 22px; text-align: center; border-top: 1px solid var(--line); }
+
+/* ---------------------------------------------------------------- badges */
+
+.badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line-2);
+  background: var(--panel-2);
+  font: 11px/1.4 var(--mono);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.badge i { font-size: 13px; }
+.badge.ok   { color: var(--ok);   border-color: #1f4432; background: #0e1f17; }
+.badge.busy { color: var(--busy); border-color: #1d3550; background: #0d1826; }
+.badge.warn { color: var(--warn); border-color: #4a3d16; background: #1d1809; }
+.badge.err  { color: var(--err);  border-color: #4d2222; background: #1d0f0f; }
+.badge.info { color: var(--info); border-color: #2c2853; background: #131229; }
+.badge.idle { color: var(--muted); }
+
+.pulse {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: currentColor;
+  animation: pulse 1.1s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100% { opacity: 0.25; transform: scale(0.8);} 50% { opacity: 1; transform: scale(1.15);} }
+
+/* ---------------------------------------------------------------- buttons */
+
+.btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 12px;
+  border-radius: 9px;
+  border: 1px solid var(--line-2);
+  background: var(--panel-2);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, transform 60ms ease;
+}
+.btn i { font-size: 15px; color: var(--muted); }
+.btn:hover { background: #1b2735; border-color: #38506b; }
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: 0.45; cursor: progress; }
+.btn.primary { background: #2a1a10; border-color: #6b3f1e; color: var(--accent-2); }
+.btn.primary i { color: var(--accent); }
+.btn.primary:hover { background: #35200f; }
+.btn.danger { background: #21120f; border-color: #5c2626; color: #ffb4b4; }
+.btn.danger i { color: var(--err); }
+.btn.ghost { background: transparent; }
+.btn.tiny { padding: 3px 8px; font-size: 11px; border-radius: 7px; }
+
+/* ------------------------------------------------------------------ stats */
+
+.stat {
+  border: 1px solid var(--line);
+  background: #0f1721;
+  border-radius: 11px;
+  padding: 11px 13px;
+}
+.stat-label {
+  display: flex; align-items: center; gap: 6px;
+  font: 11px/1 var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.stat-value { font: 600 21px/1.25 var(--mono); margin-top: 7px; }
+.stat-hint { font: 11px/1.4 var(--mono); color: #66798d; margin-top: 3px; }
+.stat.warn .stat-value { color: var(--warn); }
+.stat.err .stat-value { color: var(--err); }
+.stat.ok .stat-value { color: var(--ok); }
+.stat.busy .stat-value { color: var(--busy); }
+
+/* ------------------------------------------------------------------ gauge */
+
+.gauge { margin-top: 6px; }
+.gauge-head { display: flex; justify-content: space-between; font: 11px/1 var(--mono); color: var(--muted); margin-bottom: 6px; }
+.gauge-label { text-transform: uppercase; letter-spacing: 0.06em; }
+.gauge-pct { color: var(--accent-2); }
+.gauge-svg { display: block; width: 100%; height: 10px; overflow: visible; }
+.gauge-track { fill: #16212e; }
+.gauge-fill { fill: var(--accent); }
+.gauge-budget { fill: #33455c; }
+.gauge-caption { font: 11px/1.5 var(--mono); color: #5f7288; margin-top: 6px; }
+
+/* ---------------------------------------------------------------- counter */
+
+.counter-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.counter-value {
+  margin-left: auto;
+  font: 700 30px/1 var(--mono);
+  color: var(--accent-2);
+  min-width: 2ch;
+  text-align: right;
+}
+
+/* ----------------------------------------------------------------- toasts */
+
+.toasts { display: grid; gap: 6px; }
+.toast {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--line-2);
+  background: #101a24;
+  font-size: 12.5px;
+  animation: slide 160ms ease-out;
+}
+@keyframes slide { from { opacity: 0; transform: translateY(-4px);} to { opacity: 1; transform: none;} }
+.toast > i { font-size: 15px; color: var(--info); }
+.toast.ok > i { color: var(--ok); }
+.toast.warn > i { color: var(--warn); }
+.toast.err > i { color: var(--err); }
+.toast-text { flex: 1 1 auto; }
+.toast-x {
+  border: 0; background: transparent; color: var(--muted);
+  cursor: pointer; font-size: 15px; line-height: 1; padding: 0 2px;
+}
+.toast-x:hover { color: var(--err); }
+
+/* -------------------------------------------------------------- build log */
+
+.feed-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-family: var(--mono); font-size: 11.5px; }
+.feed-list li {
+  display: grid;
+  grid-template-columns: 42px 62px 62px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 5px 8px;
+  border-radius: 7px;
+  background: #0e1620;
+  border-left: 2px solid var(--line-2);
+}
+.feed-list li.ok { border-left-color: var(--ok); }
+.feed-list li.err { border-left-color: var(--err); background: #170f10; }
+.feed-seq { color: #5f7288; }
+.feed-target { color: var(--busy); }
+.feed-ms { color: var(--muted); }
+.feed-trigger { color: #8fa6bd; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.feed-state { color: var(--muted); }
+.build-error, .errbox {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: #170f10;
+  border: 1px solid #4d2222;
+  color: #ff9a9a;
+  white-space: pre-wrap;
+  max-height: 240px;
+  overflow: auto;
+}
+
+/* ------------------------------------------------------------------ hints */
+
+.hints { border: 1px dashed var(--line-2); border-radius: 12px; padding: 12px 16px; background: #0d141d; }
+.hints-title { display: flex; gap: 8px; align-items: center; font-weight: 600; color: #c8d8e8; margin-bottom: 8px; }
+.hints-title i { color: var(--accent); }
+.hints-list { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+.hints-list code { color: #9fc2e6; }
+
+/* ------------------------------------------------------------------- code */
+
+.src {
+  background: #0b1219;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 9px 11px;
+  overflow: auto;
+  color: #a8c6e4;
+  margin: 8px 0 0;
+}
+.kv { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.kv td { padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.kv td:first-child { width: 168px; color: var(--accent-2); font-family: var(--mono); }
+
+.app-error {
+  margin: 20px;
+  padding: 14px;
+  border: 1px solid var(--err);
+  border-radius: 10px;
+  background: #170f10;
+  color: #ffb4b4;
+  white-space: pre-wrap;
+}
+
+/* ---------------------------------------------------------------- overlays */
+
+#hmr-overlay {
+  position: fixed;
+  right: 18px;
+  bottom: 64px;
+  width: min(720px, calc(100vw - 36px));
+  max-height: 46vh;
+  overflow: auto;
+  background: #140d0e;
+  border: 1px solid #6b2b2b;
+  border-radius: 12px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.6);
+  z-index: 20;
+}
+.overlay-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 12px;
+  border-bottom: 1px solid #4d2222;
+  position: sticky; top: 0;
+  background: #1a1011;
+  border-radius: 12px 12px 0 0;
+}
+.overlay-head i { color: var(--err); }
+#overlay-body { margin: 0; padding: 12px; color: #ffc9c9; white-space: pre-wrap; }
+
+.hmr-flash {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line-2);
+  background: rgba(16, 26, 36, 0.95);
+  font: 11.5px/1 var(--mono);
+  color: var(--ok);
+  z-index: 30;
+  animation: slide 140ms ease-out;
+}
+.hmr-flash[data-tone="warn"] { color: var(--warn); border-color: #4a3d16; }
+.hmr-flash[data-tone="err"] { color: var(--err); border-color: #4d2222; }
+.hmr-flash[data-tone="busy"] { color: var(--busy); border-color: #1d3550; }
+
+@media (max-width: 720px) {
+  .page { padding: 16px; }
+  .topbar { flex-wrap: wrap; gap: 10px; }
+  .feed-list li { grid-template-columns: 40px 56px 56px 1fr auto; }
+}
+
+/* ==========================================================================
+   form field widgets — kit/src/ui_form.rs
+   Field chrome lives with the widget, not with the app: an app that drops in
+   form::text / form::choice / form::chips gets this styling for free.
+   ========================================================================== */
+
+.field {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  /* align-content has to be pinned or the grid eats you alive: the outer panel
+     grid stretches a field to its row height (whatever the tallest sibling
+     needs — a DUE field with a preset strip is ~82px), and the default
+     `align-content: normal` == `stretch` hands that slack back to *every* auto
+     row here. A 15.8px label grows to 32 and a 30px control to 46, so status,
+     priority, worker and weight all look fatter than the chips under them for
+     no reason anyone can see. `start` keeps slack where it belongs: below the
+     field, in the empty half of the cell. */
+  align-content: start;
+}
+
+/* opt-in (wide="") for fields whose content is intrinsically wide */
+.field.wide { grid-column: span 2; }
+
+.field.bare { gap: 0; flex: 1 1 auto; }
+
+.field-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font: 600 10.5px/1.5 var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.field-label i { font-size: 12px; color: var(--line-2); }
+.field-label .req { color: var(--accent); font-style: normal; margin-left: 1px; }
+.field-hint { font: 11px/1.4 var(--mono); color: #61748a; }
+
+input[type="text"],
+input[type="number"],
+input[type="date"],
+select,
+textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--ctl-h);
+  padding: 4px 8px;
+  border-radius: 9px;
+  border: 1px solid var(--line-2);
+  background: #0e1720;
+  color: var(--text);
+  font: 13px/1.5 var(--sans);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+textarea { font-family: var(--mono); font-size: 12px; resize: vertical; }
+input[type="date"] {
+  font-family: var(--mono);
+  color-scheme: dark;
+  /* an empty date input carries an intrinsic min-height (~31.5px) from the
+     calendar-picker glyph, which outranks --ctl-h and leaves this control
+     1.5px proud of the segmented/text/stepper beside it; height, not
+     min-height, is what wins */
+  height: var(--ctl-h);
+}
+select { appearance: none; cursor: pointer; }
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(255, 138, 61, 0.14);
+}
+input::placeholder, textarea::placeholder { color: #55697d; }
+input[type="number"] { -moz-appearance: textfield; }
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* stepper --------------------------------------------------------------- */
+.stepper { display: flex; align-items: stretch; gap: 0; }
+.stepper input {
+  border-radius: 0;
+  border-left: 0;
+  border-right: 0;
+  text-align: center;
+  font-family: var(--mono);
+}
+.stepper .step {
+  width: 30px;
+  border: 1px solid var(--line-2);
+  background: #131e2a;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+}
+.stepper .step:first-child { border-radius: 9px 0 0 9px; }
+.stepper .step:last-child { border-radius: 0 9px 9px 0; }
+.stepper .step:hover { color: var(--accent-2); background: #1a2733; }
+.stepper:focus-within .step { border-color: var(--accent); }
+
+/* segmented control ------------------------------------------------------
+   The group is a *grid cell*, so it must both shrink to fit and stretch to
+   fill: inline-flex + intrinsic-width children did neither — long labels
+   (status) overflowed into the neighbouring column while short ones
+   (priority A–D) left the right third of the group empty.
+   `display:flex; width:100%` fills the cell, `flex:1 1 0` shares it equally,
+   and `min-width:0` + ellipsis lets a label clip instead of colliding. */
+.segmented {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  padding: 2px;
+  gap: 2px;
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  background: #0e1720;
+}
+.segmented:focus { outline: none; border-color: var(--accent); }
+.seg {
+  /* fixed content box so an icon row and a text row are the same height —
+     a 15px glyph and a 12px/1.4 word otherwise differ by ~2px and the two
+     groups in a row visibly stop short of each other */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 26 + the group's 2px padding ×2 + 1px border ×2 = 32… target 30 to match an
+     input (--ctl-h, 30px border-box), so a row of mixed controls has its
+     bottom edges on one line */
+  min-height: 24px;
+  box-sizing: border-box;
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  /* --seg is set by the `.t-*` rules below; untoned groups fall back to the
+     muted text colour and look exactly as they did before */
+  color: color-mix(in srgb, var(--seg, var(--muted)) 55%, var(--muted));
+  font: 600 12px/1 var(--sans);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 120ms ease, color 120ms ease, box-shadow 120ms ease;
+}
+
+/* per-option colour identity -----------------------------------------------
+   `tones` (positional, kit/src/ui_form.rs) puts a badge tone on an option so a
+   value is recognisable at a glance — and reads the same here as it does in a
+   `ui-badge`, because both take the same five tone names. One hue, three
+   strengths: dimmed text at rest, full colour on hover, a tinted plate plus an
+   inset ring when selected. The plain values are the fallback for engines
+   without color-mix(); the mixed ones win where supported. */
+.seg.t-ok   { --seg: var(--ok); }
+.seg.t-busy { --seg: var(--busy); }
+.seg.t-warn { --seg: var(--warn); }
+.seg.t-err  { --seg: var(--err); }
+.seg.t-info { --seg: var(--info); }
+
+.seg:hover {
+  color: var(--seg, var(--text));
+  background: #17222f;
+  background: color-mix(in srgb, var(--seg, var(--text)) 13%, #17222f);
+}
+.seg i { font-size: 15px; line-height: 1; }
+.seg.on {
+  color: var(--seg, var(--accent-2));
+  background: #26303c;
+  background: color-mix(in srgb, var(--seg, var(--accent)) 17%, #0e1720);
+  box-shadow: 0 0 0 1px #3a4a5c inset;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--seg, var(--accent)) 48%, transparent);
+}
+
+/* date + presets -------------------------------------------------------- */
+.daterow { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.daterow input { flex: 0 0 auto; }
+.presets { display: inline-flex; gap: 4px; }
+.preset {
+  padding: 4px 8px;
+  border-radius: 7px;
+  border: 1px dashed var(--line-2);
+  background: transparent;
+  color: var(--muted);
+  font: 11px/1.4 var(--mono);
+  cursor: pointer;
+}
+.preset:hover { color: var(--accent-2); border-color: var(--accent); border-style: solid; }
+
+/* chips ------------------------------------------------------------------ */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-height: var(--ctl-h);
+  padding: 2px 6px;
+  border: 1px solid var(--line-2);
+  border-radius: 9px;
+  background: #0e1720;
+  cursor: text;
+}
+/* the add-box inside a chips field is chrome, not another control: left at the
+   global min-height it sets a 36px floor (28 + 4px padding ×2) that pushes the
+   whole field past --ctl-h, and the row stops matching its neighbours */
+.chips .chip-in {
+  min-height: 0;
+  height: 22px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+}
+.chips .chip-in:focus { box-shadow: none; }
+.chips:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(255,138,61,.14); }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 4px 2px 8px;
+  border-radius: 999px;
+  background: #17222f;
+  border: 1px solid #24313f;
+  font: 11.5px/1.5 var(--mono);
+  color: #9fc2e6;
+}
+.chip-t { white-space: nowrap; }
+.chip-x {
+  border: 0;
+  background: transparent;
+  color: #5c7288;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 3px;
+}
+.chip-x:hover { color: var(--err); }
+.chip-in {
+  flex: 1 1 90px;
+  min-width: 90px;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 3px 2px !important;
+}
+
+/* toggle ---------------------------------------------------------------- */
+.field.toggle { grid-auto-flow: column; justify-content: start; align-items: center; gap: 8px; }
+.switch {
+  position: relative;
+  width: 38px;
+  height: 21px;
+  flex: 0 0 auto;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid var(--line-2);
+  background: #0e1720;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+.switch .knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #4d647c;
+  transition: transform 140ms cubic-bezier(.2,.8,.2,1), background 140ms ease;
+}
+.switch.on { background: #2a1a10; border-color: var(--accent); }
+.switch.on .knob { transform: translateX(17px); background: var(--accent); }
+.switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* keyboard hints -------------------------------------------------------- */
+.kbd-hints { display: inline-flex; flex-wrap: wrap; gap: 4px 10px; }
+.kbd { display: inline-flex; align-items: center; gap: 5px; font: 11px/1.6 var(--mono); color: #61748a; }
+.kbd kbd {
+  padding: 1px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--line-2);
+  border-bottom-width: 2px;
+  background: #131e2a;
+  color: #b9cbdd;
+  font: inherit;
+}
+
+/* ==========================================================================
+   ui-tooltip — ported from psicom-c-ui/ui.css (the canonical custom m-js
+   tooltip). Keep these rules in sync with kit/src/ui_tooltip.rs, which does the
+   measuring: the bubble is position:fixed with JS-computed coords so it can
+   escape overflow-clipped ancestors, and it is hidden with visibility/opacity
+   (NOT display:none) so it still has a box to measure before it appears.
+   ========================================================================== */
+.ui-tt-anchor {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  /* no overflow:hidden — that would clip the chat-bubble tail (::after) */
+}
+
+.ui-tooltip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 9999;
+  pointer-events: none;
+  background: rgba(10, 20, 35, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  padding: 8px 12px;
+  font: 12px/1 var(--sans);
+  color: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  /* long labels wrap at max-width and _place() measures the wrapped box */
+  max-width: 200px;
+  white-space: normal;
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  overflow: visible;
+}
+
+/* chat-bubble tail: clip-path triangle, ::before = border, ::after = fill */
+.ui-tooltip::before,
+.ui-tooltip::after {
+  content: "";
+  position: absolute;
+  left: var(--tt-tail-x, 50%);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.ui-tooltip::before {
+  width: 16px;
+  background: rgba(255, 255, 255, 0.15);
+  z-index: 0;
+}
+.ui-tooltip::after {
+  width: 14px;
+  background: rgba(10, 20, 35, 0.92);
+  z-index: 1;
+}
+/* The tail must start at the bubble's own edge (top:100%) and be tall enough to
+   cross the 9px GAP — a `calc(100% + 8px)` offset (a leftover from the retired
+   absolute-positioning scheme, where 8px *was* the bubble-to-anchor offset) puts
+   the pip on the anchor and leaves a visible void under the bubble.
+   --tt-tail-x is written by ui_tooltip.rs so the pip still points at the anchor
+   centre when the bubble has been clamped to the viewport edge. */
+.ui-tt-top::before,
+.ui-tt-top::after {
+  top: 100%;
+  bottom: auto;
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+/* "^" hanging above the bubble when it flipped below */
+.ui-tt-bottom::before,
+.ui-tt-bottom::after {
+  bottom: 100%;
+  top: auto;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+.ui-tooltip::before { height: 9px; }   /* border layer spans the whole gap */
+.ui-tooltip::after  { height: 8px; }   /* fill layer, 1px inset */
+
+.ui-tt-label {
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.ui-tt-multiline .ui-tt-label {
+  white-space: pre-line;
+}
+
+/* the segmented control's options are each a tooltip anchor, so the anchor —
+   not the button — is the flex item that shares the group's width */
+.segmented .ui-tt-anchor {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+}
+.segmented .seg {
+  width: 100%;
+}
